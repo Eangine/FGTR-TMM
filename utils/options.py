@@ -5,6 +5,8 @@ def get_args():
 
     parser.add_argument("--warm_up", default=False, action='store_true')
     parser.add_argument("--memory_size", default=4096, type=int)
+    parser.add_argument("--disable_elite_memory", default=False, action='store_true')
+    parser.add_argument("--elite_clean_conf_margin", default=0.0, type=float)
     parser.add_argument("--noisy_rate", default=0.4, type=float)
     # parser.add_argument("--noisy_file", default='', type=str)
     parser.add_argument("--noisy_file", default='./noise_file/f30k/noise_inx_0.4.npy', type=str)
@@ -116,7 +118,6 @@ def get_args():
     args = parser.parse_args()
 
     return args
-
 
 
 

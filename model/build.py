@@ -282,7 +282,24 @@ class RASC(nn.Module):
             self.prototype_use_calibration = False
 
         # -------------------------------------------------------
-        # mode 3: full model (+ prototype token calibration)
+        # mode 4: + prototype token calibration, without salient patch selection
+        # -------------------------------------------------------
+        elif m == 4:
+            self.ignore_gmm = False
+            self.use_warmup = True
+
+            self.enable_clean_branch = True
+            self.enable_noisy_branch = True
+
+            self.enable_token_calibration = True
+            self.use_selected_patches_for_calibration = False
+
+            self.use_memory_bank = True
+            self.use_noisy_retrieval = True
+            self.prototype_use_calibration = True
+
+        # -------------------------------------------------------
+        # mode 5: full model (+ prototype token calibration)
         # -------------------------------------------------------
         elif m == 5:
             self.ignore_gmm = False
@@ -1093,6 +1110,12 @@ class RASC(nn.Module):
             clean_mask = (label_hat == 1)
             noisy_mask = (label_hat == 0) 
 
+        elite_clean_mask = batch.get('elite_clean_mask', None)
+        if elite_clean_mask is not None:
+            elite_clean_mask = elite_clean_mask.to(images.device).bool() & clean_mask
+        else:
+            elite_clean_mask = clean_mask
+
         is_warmup = (self.use_warmup and args.warm_up and epoch <= args.warmup_epochs)
     
         with autocast(enabled=self.use_amp, dtype=self.amp_dtype):
@@ -1120,8 +1143,8 @@ class RASC(nn.Module):
             sample_prior = self._build_sample_prior(label_hat, is_warmup=is_warmup)
 
             # 2.1 clean: 入 memory bank
-            if self.enable_clean_branch and clean_mask.sum() > 0:
-                self._update_memory_bank(clean_mask, cls_img, caption_ids, batch=batch)
+            if self.enable_clean_branch and elite_clean_mask.sum() > 0:
+                self._update_memory_bank(elite_clean_mask, cls_img, caption_ids, batch=batch)
 
             # 2.2 noisy: 检索 + 原型校准
             if self.enable_noisy_branch and noisy_mask.sum() > 0 and self.use_noisy_retrieval and sample_prior[noisy_mask].sum() > 0:
@@ -1205,4 +1228,3 @@ class RASC(nn.Module):
 def build_model(args):
     model = RASC(args)
     return model
-

@@ -77,7 +77,7 @@ def get_loss(model, data_loader):
     prob_A = gmm_A.predict_proba(input_A_np)[:, gmm_A.means_.argmin()]
     pred_A = split_prob(prob_A, 0.95)
 
-    return torch.Tensor(pred_A)
+    return torch.as_tensor(pred_A, dtype=torch.float32), torch.as_tensor(prob_A, dtype=torch.float32)
 
 def fit_gmm_on_bank(lossA, args):
     logger = logging.getLogger("RASC.train")
@@ -103,7 +103,7 @@ def fit_gmm_on_bank(lossA, args):
     threshold = 0.7
     pred_A = split_prob(prob_A, threshold)
 
-    return torch.as_tensor(pred_A, dtype=torch.float32)
+    return torch.as_tensor(pred_A, dtype=torch.float32), torch.as_tensor(prob_A, dtype=torch.float32)
 
 def get_real_correspondences_from_loader(train_loader):
     """
@@ -289,17 +289,34 @@ def do_train(start_epoch, args, model, train_loader, evaluator, optimizer, sched
         model.epoch = epoch
 
         if epoch == start_epoch:
-            pred_A = get_loss(model, train_loader)
+            pred_A, clean_conf = get_loss(model, train_loader)
         else:
-            pred_A = fit_gmm_on_bank(lossA_bank, args)
+            pred_A, clean_conf = fit_gmm_on_bank(lossA_bank, args)
 
         label_hat = pred_A.clone()
 
         pred_clean_num = int((label_hat == 1).sum().item())
         pred_noisy_num = int((label_hat == 0).sum().item())
 
+        use_elite_memory = not getattr(args, "disable_elite_memory", False)
+        clean_conf_margin = getattr(args, "elite_clean_conf_margin", 0.0)
+        if use_elite_memory and pred_clean_num > 0:
+            clean_conf_in_clean_set = clean_conf[label_hat == 1]
+            elite_clean_threshold = float(clean_conf_in_clean_set.mean().item())
+            elite_clean_mask_all = (label_hat == 1) & (clean_conf > elite_clean_threshold + clean_conf_margin)
+        else:
+            elite_clean_threshold = 0.0
+            elite_clean_mask_all = (label_hat == 1)
+
+        elite_clean_num = int(elite_clean_mask_all.sum().item())
+
         print(f"clean: {pred_clean_num}, noisy: {pred_noisy_num}")
         logger.info(f"[Split] Epoch {epoch}: pred clean={pred_clean_num}, pred noisy={pred_noisy_num}")
+        logger.info(
+            f"[EliteMemory] Epoch {epoch}: enabled={use_elite_memory}, "
+            f"tau_dyn={elite_clean_threshold:.4f}, margin={clean_conf_margin:.4f}, "
+            f"elite clean={elite_clean_num}/{pred_clean_num}"
+        )
 
         if real_correspondences_all is not None and get_rank() == 0:
             split_metrics = compute_clean_split_quality(
@@ -334,6 +351,8 @@ def do_train(start_epoch, args, model, train_loader, evaluator, optimizer, sched
             tb_writer.add_scalar("split_quality/split_acc", split_metrics["acc"], epoch)
             tb_writer.add_scalar("split_quality/pred_clean_num", split_metrics["pred_clean_num"], epoch)
             tb_writer.add_scalar("split_quality/pred_noisy_num", split_metrics["pred_noisy_num"], epoch)
+            tb_writer.add_scalar("split_quality/elite_clean_num", elite_clean_num, epoch)
+            tb_writer.add_scalar("split_quality/elite_clean_threshold", elite_clean_threshold, epoch)
 
             split_quality_dir = os.path.join(args.output_dir, "split_quality")
             save_split_quality_curve(split_quality_history, split_quality_dir)
@@ -358,6 +377,8 @@ def do_train(start_epoch, args, model, train_loader, evaluator, optimizer, sched
 
             index = batch['index']
             batch['label_hat'] = label_hat[index.cpu()]
+            batch['clean_conf'] = clean_conf[index.cpu()]
+            batch['elite_clean_mask'] = elite_clean_mask_all[index.cpu()]
             batch['hist_weights'] = global_hist_weights[index]
             ret = model(batch, epoch, args)
 
@@ -462,4 +483,3 @@ def do_inference(model, test_img_loader, test_txt_loader):
 
     evaluator = Evaluator(test_img_loader, test_txt_loader)
     top1 = evaluator.eval(model.eval())
-
