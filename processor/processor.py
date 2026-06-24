@@ -75,7 +75,9 @@ def get_loss(model, data_loader):
         gmm_A.fit(input_A_np)
 
     prob_A = gmm_A.predict_proba(input_A_np)[:, gmm_A.means_.argmin()]
-    pred_A = split_prob(prob_A, 0.95)
+    threshold = getattr(model.args, "gmm_initial_threshold", 0.95)
+    logger.info(f"[GMM] initial clean threshold: {threshold:.4f}")
+    pred_A = split_prob(prob_A, threshold)
 
     return torch.as_tensor(pred_A, dtype=torch.float32), torch.as_tensor(prob_A, dtype=torch.float32)
 
@@ -100,7 +102,8 @@ def fit_gmm_on_bank(lossA, args):
         gmm_A.fit(input_A_np)
 
     prob_A = gmm_A.predict_proba(input_A_np)[:, gmm_A.means_.argmin()]
-    threshold = 0.7
+    threshold = getattr(args, "gmm_bank_threshold", 0.7)
+    logger.info(f"[GMM] bank clean threshold: {threshold:.4f}")
     pred_A = split_prob(prob_A, threshold)
 
     return torch.as_tensor(pred_A, dtype=torch.float32), torch.as_tensor(prob_A, dtype=torch.float32)

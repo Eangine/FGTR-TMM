@@ -988,6 +988,10 @@ class RASC(nn.Module):
             else:
                 noisy_text = self._decode_caption(batch['caption_ids'][bidx])
 
+            noisy_text_save_path = os.path.join(case_dir, "noisy_text.txt")
+            with open(noisy_text_save_path, "w", encoding="utf-8") as f:
+                f.write(str(noisy_text))
+
             # -----------------------------
             # 4. 检索结果
             # -----------------------------
@@ -1069,6 +1073,8 @@ class RASC(nn.Module):
                 "original_image_path": img_path,
                 "original_image_saved": original_save_path,
                 "masked_image_saved": masked_save_path,
+                "noisy_text": noisy_text,
+                "noisy_text_saved": noisy_text_save_path,
                 "original_noisy_text": noisy_text,
                 "retrieved_candidates": retrieved_infos,
                 "selected_rank": int(best_idx[local_noisy_id].detach().cpu().item()) + 1,
@@ -1077,6 +1083,38 @@ class RASC(nn.Module):
                 "text_confidence": text_confidence,
                 "token_confidence": token_conf_list
             }
+
+            if 'real_label' in batch:
+                real_label = batch['real_label'][bidx]
+                if torch.is_tensor(real_label):
+                    real_label = int(real_label.detach().cpu().item())
+                result["real_label"] = int(real_label)
+
+            summary_path = os.path.join(case_dir, "case_summary.txt")
+            with open(summary_path, "w", encoding="utf-8") as f:
+                f.write(f"epoch: {epoch}\n")
+                f.write(f"iteration: {iteration}\n")
+                f.write(f"global_index: {global_index}\n")
+                f.write(f"original_image_path: {img_path}\n")
+                if "real_label" in result:
+                    f.write(f"real_label: {result['real_label']} (1=clean, 0=noisy)\n")
+                f.write("\n[Noisy text]\n")
+                f.write(str(noisy_text) + "\n")
+                f.write("\n[Final calibrated text]\n")
+                f.write(str(final_text) + "\n")
+                f.write("\n[Reliable text by token threshold]\n")
+                f.write(str(reliable_text) + "\n")
+                f.write(f"\ntext_confidence: {text_confidence:.6f}\n")
+                f.write(f"selected_rank: {result['selected_rank']}\n")
+                f.write("\n[Retrieved candidates]\n")
+                for item in retrieved_infos:
+                    f.write(
+                        f"top{item['rank']} | selected={item['is_selected']} | "
+                        f"sim={item['image_image_similarity']:.6f} | "
+                        f"bank_index={item['bank_index']}\n"
+                    )
+                    f.write(str(item["text"]) + "\n\n")
+            result["case_summary_saved"] = summary_path
 
             with open(os.path.join(case_dir, "case_info.json"), "w", encoding="utf-8") as f:
                 json.dump(result, f, ensure_ascii=False, indent=2)
