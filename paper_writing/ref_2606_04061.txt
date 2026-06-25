@@ -1,0 +1,852 @@
+                                                    Intra-Modal Neighbors Never Lie: Rectifying Inter-Modal Noisy
+                                                       Correspondence via Graph-Based Intra-Modal Reasoning
+
+
+                                                              Yang Liu 1 2 Wentao Feng 1 Shu-Dong Huang 1 Yalan Ye 3 Jiancheng Lv 1
+
+
+                                                                  Abstract                                                  Input Image
+                                                                                                                                                      Traditional Discrete Selection               Nearest Neighbor
+
+
+                                             Large-scale web-harvested datasets have fueled
+                                                                                                                                                              Clean Set Search:
+                                             the progress of cross-modal retrieval but in-                                                                  Find Nearest Neighbor
+arXiv:2606.04061v1 [cs.CV] 2 Jun 2026
+
+
+
+
+                                                                                                                           Noisy Caption                                                            Proxy Caption
+                                             evitably suffer from noisy correspondence, which                                                                                                      “A golden retrieval
+                                                                                                                           “A sleeping cat”                                                         in a living room”
+                                             severely degrades model generalization. Ex-
+                                             isting methods primarily address this by filter-                                                  Proposed Continuous Rectification
+
+                                             ing out noise or seeking a substitute label, yet                                                 Intra-Modal Retrieval & Graph-guided Rectification
+                                                                                                                           Input Image
+                                             they predominantly remain bound by a “Dis-                                                                     “A gold
+                                                                                                                                                          retriever…”
+                                             crete Selection” paradigm. We argue that rely-
+                                             ing on a single discrete proxy induces Single-                                                             “A beagle…”                                      Synthesized
+                                                                                                                           Noisy Caption                                                                 Continuous
+                                             Point Fragility and Discretization Error. To over-                        “A sleeping cat”                  “A sprawling
+                                                                                                                                                                                                          Prototype
+                                                                                                                                                         green lawn…"           Graph Refiner
+                                             come these limitations, we propose a novel frame-
+                                             work, Intra-modal Neighbor-aware Noise Rec-
+                                             tification (IN2 R), which shifts the paradigm from                   Figure 1. Comparison between the Traditional Discrete Selec-
+                                                                                                                  tion paradigm and our proposed Continuous Rectification (IN2 R).
+                                             searching for a substitute to synthesizing a reli-                   While discrete selection (top) seeks a single substitute proxy from
+                                             able supervision target. Leveraging the intrinsic                    a finite dataset, often suffering from discretization error or select-
+                                             geometric stability of intra-modal data, IN2 R em-                   ing noisy neighbors (e.g., retrieving an imperfect caption), our
+                                             ploys a Graph Refiner to perform relational rea-                     approach (bottom) leverages the intrinsic topological structure. By
+                                             soning over neighbors retrieved from a dynamic                       retrieving intra-modal neighbors and aggregating them via a Graph
+                                                                                                                  Refiner, we synthesize a robust, continuous prototype that rectifies
+                                             Cross-Model Memory. Instead of propagating                           the semantic misalignment (e.g., correcting “A sleeping cat” using
+                                             discrete labels, our method synthesizes a continu-                   the visual consensus of dog-related features).
+                                             ous, soft prototype that reflects the consensus “Aofgold
+                                                                                           retriever…”
+                                                                                                           Graph Refiner
+
+                                             the local semantic neighborhood, effectively recti-
+                                             fying inter-modal misalignment. Extensive exper-
+                                                                                            “A beagle…”           ing cross-modal retrieval, visual question answering, and
+                                             iments on Flickr30K, MS-COCO, and CC152K                             broader multi-modal reasoning. The prevailing paradigm
+                                             demonstrate that IN2 R significantly outperforms
+                                                                                            “A sprawling          relies on contrastive learning to align visual and textual rep-
+                                             state-of-the-art methods. Our code and green    pre- lawn…"
+                                                                                                                  resentations into a shared semantic space, typically requiring
+                                             trained models are publicly available at https:                      large-scale, high-quality image-text pairs. However, real-
+                                             //github.com/liuyyy111/IN2R.                                         world datasets derived from web sources inevitably suffer
+                                                                                                                  from noisy correspondence, leading to images being paired
+                                                                                                                  with mismatched or irrelevant captions. Recent studies have
+                                        1. Introduction                                                           revealed that even widely used benchmarks like Conceptual
+                                        Effective visual-semantic alignment has emerged as a corner-              Captions (Huang et al., 2021) contain a non-negligible ratio
+                                        stone of diverse vision-language applications, encompass-                 of mismatched pairs. Such noise fundamentally corrupts the
+                                                                                                                  training signal, causing the model to memorize erroneous
+                                            1
+                                              College of Computer Science, Sichuan University, China              associations and severely degrading retrieval performance.
+                                        2
+                                         Engineering Research Center of Machine Learning and Indus-
+                                        try Intelligence, Ministry of Education 3 School of Computer Sci-         To combat this, existing approaches primarily diverge into
+                                        ence and Engineering, University of Electronic Science and Tech-          three paradigms. Sample Selection methods (Huang et al.,
+                                        nology of China, China. Correspondence to: Shu-Dong Huang                 2021; Qin et al., 2022) and Consistency-based approaches
+                                        <huangsd@scu.edu.cn>.                                                     (Yang et al., 2023; Zha et al., 2025; Zhao et al., 2024) often
+                                        Proceedings of the 43 rd International Conference on Machine              falter due to intrinsic data waste (i.e., discarding informa-
+                                        Learning, Seoul, South Korea. PMLR 306, 2026. Copyright 2026              tive hard positives) or a circular dependency on corrupted
+                                        by the author(s).                                                         inter-modal signals for re-weighting. Consequently, recent
+
+                                                                                                             1
+                                              Intra-Modal Neighbors Never Lie
+
+research has shifted towards Correction-based strategies             anism. Rather than treating the retrieved neighbors as a
+(Han et al., 2023; Li et al., 2024; Han et al., 2024), which         bag of discrete candidates, we model them as a local se-
+attempt to rectify noisy labels by retrieving new targets.           mantic graph. Specifically, we employ a learnable Graph
+However, we argue these methods remain bound by a “Dis-              Refiner that performs relational reasoning over the retrieved
+crete Selection” paradigm, seeking a substitute proxy from           neighbors. Through attention-based aggregation, the graph
+the existing finite dataset. This reliance on discrete prox-         refiner captures the subtle geometric dependencies within
+ies fundamentally limits precision: it induces Single-Point          the neighborhood and synthesizes a refined prototype. This
+Fragility when the selected neighbor is noisy, and inevitably        prototype serves as a robust, continuous supervision target
+introduces Discretization Error by forcing continuous se-            that is both topologically faithful (derived from the clean
+mantic truths to align with imperfect, discrete samples.             manifold) and statistically precise (marginalizing discrete
+                                                                     noise), effectively transforming the supervision of noisy
+To overcome the fragility of discrete selection, we exploit
+                                                                     data from “imitation of a proxy” to “alignment with a syn-
+the intrinsic topological structure of the data. A key obser-
+                                                                     thesized truth.”
+vation, illustrated in Figure 1, motivates our design: while
+noise disrupts the explicit alignment between modalities,            The main contributions are summarized as follows:
+the implicit geometric structure within each modality re-
+mains robust. For instance, as shown in the upper path of            • Paradigm Shift: We identify the “Single-Point Fragility”
+Figure 1, an image of a golden retriever might be wrongly              in discrete selection methods and propose a shift towards
+paired with a noisy caption ”a sleeping cat”. Traditional              continuous rectification. Our approach leverages intra-
+methods risk selecting another discrete proxy that may itself          modal topology to synthesize robust supervision targets,
+be imperfect. However, the image still maintains correct               avoiding discretization errors.
+semantic proximity to other dog images (e.g., “beagle”) in
+the visual feature space. This implies that reliable semantic        • Methodological Innovation: We propose the IN2 R
+information is not attached to any single instance—which               framework, which integrates a Cross-Model Memory with
+might itself be noisy—but is effectively preserved within the          a Graph Refiner. This design effectively decouples noise
+collective consensus of the local neighborhood. Crucially,             sources and employs relational reasoning to generate fine-
+we posit that the semantic “truth” of a noisy sample is                grained supervision for noisy samples.
+not a discrete point waiting to be found in the dataset,
+but is best modeled as a continuous prototype synthe-                • State-of-the-Art Performance: Extensive experiments
+sized from this local consensus. This perspective drives               on three benchmarks demonstrate that IN2 R significantly
+a paradigm shift from searching for a substitute to synthe-            outperforms existing methods, particularly in high-noise
+sizing a target, offering two decisive advantages. First, re-          scenarios, validating the efficacy of our strategy.
+garding robustness, it mitigates the risk of selecting a noisy
+neighbor; while individual samples may be unreliable, their          2. Related Works
+collective distribution statistically marginalizes such noise.
+Second, regarding precision, it transcends the limitations           Image-Text Matching. Classical image–text retrieval ap-
+of discrete selection. Unlike reusing a neighbor’s existing          proaches can be broadly categorized into two groups based
+label—which inevitably introduces discretization error and           on the granularity of the matching similarity: global-level
+merely recycles old data—our method synthesizes a new,               matching and local-level matching methods. Global-level
+continuous supervision signal. This synthesized target fills         matching methods project images and texts into a shared
+the semantic gaps between discrete samples, providing finer-         embedding space, where similarity is computed using im-
+grained supervision that more accurately approximates the            proved loss functions (Faghri et al., 2018; Chun et al., 2021)
+true semantic center of the manifold.                                to bring semantically aligned pairs closer together. To en-
+                                                                     hance the quality of the embedding space, recent studies
+To instantiate this continuous rectification paradigm, we            have introduced more sophisticated network architectures,
+propose a novel framework termed Intra-modal Neighbor-               such as graph convolutional networks (Liu et al., 2020;
+aware Noise Rectification (IN2 R). Recognizing that reliable         Wang et al., 2020), generalized pooling operators (Chen
+“synthesis” requires a pristine source of information, we            et al., 2021), and other advanced model designs (Huang
+build our framework upon a co-training backbone, employ-             et al., 2018; Li et al., 2019; 2022). To achieve closer align-
+ing dual peer networks that maintain Cross-Model Memory              ment between semantically corresponding image–text pairs,
+Queues to dynamically curate high-confidence clean sam-              several methods (Chun et al., 2021; Kim et al., 2023; Chun,
+ples. This cross-model design is pivotal: it decouples the           2023; Liu et al., 2025b;a) have been proposed to address the
+source of retrieval from the model being trained, ensuring           inherent discrepancy in information density between visual
+that the topological reference remains unbiased. The core            and textual modalities. In contrast, local-level matching
+innovation lies in our Graph-Guided Rectification mech-              methods (Diao et al., 2021; Liu et al., 2023; Wang et al.,
+
+                                                                 2
+                                              Intra-Modal Neighbors Never Lie
+
+2019; Wei et al., 2020; Zhang et al., 2022; 2020; Chen et al.,       spondence. Our goal is to learn robust encoders fθ (·) and
+2020; Qu et al., 2021) focus on fine-grained region-level            gϕ (·) by transforming noisy labels into continuous, high-
+alignment. These approaches typically capture detailed cor-          fidelity supervision signals.
+respondences between image regions and textual phrases
+                                                                     We propose the Intra-modal Neighbor-aware Noise Recti-
+through cross-modal interaction networks.
+                                                                     fication (IN2 R) framework. As illustrated in Figure 2, our
+Learning with Noisy Correspondence (NCL). Existing                   method adopts a co-training paradigm with two peer net-
+NCL methods primarily diverge into three streams: selec-             works, MA and MB , to decouple the noise identification
+tion, consistency, and correction. Sample Selection meth-            from the rectification process.
+ods (Huang et al., 2021; Qin et al., 2022) partition data
+                                                                     To initiate the robust training, we strictly leverage the
+into clean and noisy subsets based on loss distributions.
+                                                                     “Small-Loss” hypothesis. Specifically, the training proceeds
+While effective for low noise, these methods inevitably
+                                                                     in two phases:
+suffer from data waste by discarding ”hard positives” that
+exhibit high losses. To mitigate this, Consistency-based
+methods (Yang et al., 2023; Zha et al., 2025; Zhao et al.,           • Warm-up Phase: We first warm up the networks on the
+2024) re-weight samples by enforcing cross-modal or intra-             full dataset D. Following L2RM (Han et al., 2024), we
+modal consistency. However, they face a circular depen-                adopt the Symmetric Cross Entropy (SCE) as the robust
+dency: consistency computed from corrupted inter-modal                 objective to prevent overfitting. This strategy helps estab-
+signals is inherently unreliable under high noise ratios. Re-          lish a preliminary discriminative feature space, effectively
+cently, Correction-based approaches have emerged, attempt-             separating the loss distributions of clean and noisy sam-
+ing to rectify noisy labels by learning meta-similarity (Han           ples.
+et al., 2023), mining consistency cues across views (Ma
+et al., 2024), suppressing soft-margin contributions of sus-           To formalize this, let H(·, ·) denote the cross-entropy op-
+picious pairs (Yang et al., 2024), retrieving nearest neigh-           erator. We define the general SCE loss between a target
+bors (Li et al., 2024), propagating pseudo-label consistency           distribution q and a prediction distribution p as:
+across peers (Liu et al., 2026), or seeking optimal transport
+plans (Han et al., 2024). Crucially, these methods predom-                       Lsce (q, p) = αH(q, p) + βH(p, q)              (1)
+inantly follow a “Discrete Selection” paradigm—seeking
+a substitute proxy from the finite dataset. We argue this in-
+                                                                       where the first term is the standard InfoNCE and the sec-
+duces discretization error, as the true semantic target often
+                                                                       ond is the Reverse Cross Entropy (RCE). Here, p denotes
+lies on a continuous manifold and may not exist in the dis-
+                                                                       the temperature-scaled softmax distribution of similarity
+crete candidate pool. Unlike these works, our method shifts
+                                                                       scores, while the target q is set to the one-hot ground-truth
+from finding a discrete proxy to synthesizing a continuous
+                                                                       y. Note that we apply ϵ-smoothing to q in the RCE term
+prototype.
+                                                                       for numerical stability. The bidirectional robust loss is
+Graph-based Reasoning in NCL. Graph Neural Networks                    derived as Lrobust = 12 [Lsce (y, pi2t ) + Lsce (y, pt2i )].
+(GNNs) have recently been introduced to Noisy Correspon-
+dence Learning (NCL) to capture high-order structural in-
+                                                                     • Co-training Phase with Dynamic Partition: Follow-
+formation. Recent works like GLP (Li et al., 2025) and
+                                                                       ing warm-up, at each epoch, we fit a two-component
+SPS (Xie et al., 2025) construct neighbor graphs to refine
+                                                                       Gaussian Mixture Model (GMM) to the per-sample loss
+representations. However, these approaches typically treat
+                                                                       distributions. Based on the posterior probabilities, we dy-
+the graph as a tool for passive label propagation or smooth-
+                                                                       namically partition D into a labeled clean subset Dclean
+ing, averaging out discriminative signals alongside noise. In
+                                                                       and an unlabeled noisy subset Dnoisy .
+contrast, our framework employs GNNs for active reason-
+ing, utilizing attention mechanisms to dynamically detect
+structural conflicts and synthesize robust supervision signals       3.2. Manifold Stabilization via Intra-modal Constraints
+from the local consensus, rather than merely propagating
+existing labels.                                                     For the identified clean subset Dclean , our goal is twofold:
+                                                                     (1) to align the semantic representations across modalities,
+                                                                     and (2) to explicitly consolidate the geometric structure
+3. Method                                                            within each modality to support reliable neighbor retrieval.
+3.1. Overview and Problem Formulation                                Formally, consider a batch of clean samples B =
+We consider the cross-modal retrieval task given a dataset           {(Ii , Ti )}B
+                                                                                 i=1 sampled from Dclean . Let vi = fθ (Ii ) and
+D = {(Ii , Ti )}N                                                    ui = gϕ (Ti ) denote the normalized image and text em-
+                i=1 , which inevitably contains noisy corre-
+                                                                     beddings. We define the standard bi-directional Triplet
+
+                                                                 3
+                                                                                                                                           Prototype
+                                                            “A sleeping cat”                     “A sprawling
+        “A sprawling                                                                             green lawn…"       Graph Refiner
+        green lawn…"
+
+
+
+                                                       Intra-Modal Neighbors Never Lie
+
+
+                                                                        enqueue                    High-Confidence Cross-Model Memory
+
+                                       𝑓𝜃                                                          Image                      … FIFO
+                                                             Manifold Stabilization                Queue
+
+                                                             ℒ 𝑐𝑙𝑒𝑎𝑛 = ℒ 𝑖𝑛𝑡𝑒𝑟 + ℒ 𝑖𝑛𝑡𝑟𝑎
+         “A golden retrieval                                                                        Text
+                                       𝑔𝜙                                                                                     …     FIFO
+          in a living room”                                                                        Queue
+                                                                        enqueue
+             Clean Pairs
+
+                                                                                               Graph-Guided Continuous Rectification
+
+
+                                                                                                                               Top-K
+                                                                                                                              Neighbors
+                                            retrieve
+                                                                  Text Queue
+
+                                                           Rectification
+                                       𝑓𝜃                                                                         Graph
+                                                               ℒ rect                                             Refiner
+
+
+
+                                                           Rectification                                          Graph
+           “A sleeping cat”            𝑔𝜙
+                                                               ℒ rect                                             Refiner
+
+
+             Noisy Pairs                                         Image Queue
+                                            retrieve
+                                                                                                                               Top-K
+                                                                                                                              Neighbors
+
+
+
+Figure 2. The overall framework of Intra-modal Neighbor-aware Noise Rectification (IN2 R). (Top) Manifold Stabilization: For
+identified clean pairs, we minimize Lclean (combining inter-modal alignment and intra-modal constraints) to consolidate the geometric
+structure, while pushing high-confidence representations into the Cross-Model Memory. (Bottom) Graph-Guided Continuous Rectifica-
+tion: For noisy pairs, we retrieve the Top-K intra-modal neighbors from the memory queue. A learnable Graph Refiner then performs
+relational reasoning over these neighbors to synthesize a continuous, robust soft prototype. This synthesized target provides fine-grained
+supervision via Lrect , correcting the noisy correspondence.
+
+
+Ranking Loss Ltriplet as:                                                         where V and U represent the sets of embeddings in the
+                                                                                  batch.
+                        B 
+                        X
+Ltriplet (X, Y) =             [α − S(xi , yi ) + S(xi , yi− )]+                   3.2.2. I NTRA - MODAL G EOMETRIC C ONSISTENCY
+                        i=1
+                                                                                 Relying solely on inter-modal alignment often leads to se-
+                               + [α − S(xi , yi ) + S(x−
+                                                       j , yi )]+
+                                                                                  mantic misalignment within individual modalities, where
+                                                                                  semantically similar instances may not be clustered effec-
+                                                                    (2)           tively. Inspired by ConVSE (Liu et al., 2022), we introduce
+                                                                                  explicit intra-modal constraints to regularize the feature
+where S(·, ·) computes the cosine similarity, α is the                            space.
+margin parameter, [x]+ = max(0, x), and yi− =
+arg maxj̸=i S(xi , yj ) and x−                                                    Following the strategy in (Liu et al., 2022), we employ Ran-
+                             j = arg maxj̸=i S(xj , yi ) de-
+note the hardest negatives within the batch.                                      dom Dropout as a data augmentation technique to generate
+                                                                                  positive pairs without requiring external data. Specifically,
+3.2.1. I NTER - MODAL A LIGNMENT                                                  we forward the same batch of images (or texts) through
+                                                                                  the encoder twice with different dropout masks, yielding
+To bridge the modality gap and align semantic semantics,                          two views for each sample: original views {vi , ui } and
+we apply the ranking loss to the paired image and text em-                        augmented views {vi′ , u′i }.
+beddings:
+                                                                                  We then impose the ranking constraints within each modality
+                       Linter = Ltriplet (V, U)                     (3)           to pull these intrinsic positive pairs together while pushing
+
+                                                                            4
+                                               Intra-Modal Neighbors Never Lie
+
+away different instances:                                             architecture to decouple the retrieval source from the query.
+                                                                      Specifically, network MA retrieves neighbors exclusively
+  Limg = Ltriplet (V, V′ ),     Ltxt = Ltriplet (U, U′ ) (4)          from the memory queue of its peer MB , denoted as QB ,
+                                                                      and vice versa:
+By explicitly enforcing Limg and Ltxt , we ensure that the
+visual (or textual) proximity faithfully reflects semantic sim-
+                                                                                         QB = {(vk , uk )}M
+                                                                                                          k=1                    (6)
+ilarity, preventing the manifold from collapsing due to noise.
+                                                                      where M is the memory capacity. By querying the peer’s
+3.2.3. O PTIMIZATION O BJECTIVE FOR C LEAN DATA                       historical consensus, the model avoids verifying its own
+The final objective for the clean subset integrates both con-         potential hallucinations.
+straints:
+                                                                      3.4. Graph-Guided Continuous Rectification
+         Lclean = Linter + λintra (Limg + Ltxt )           (5)
+                                                                      For the identified noisy subset Dnoisy , the original labels
+where λintra balances the contribution of the manifold reg-           are deemed unreliable. We propose to rectify them by syn-
+ularization. This structure-first approach ensures a robust           thesizing continuous supervision signals derived from the
+topological backbone for the subsequent rectification of              clean manifold. Remark on Symmetry: Our rectification
+noisy data.                                                           process is designed to be bidirectional and symmetric. For
+                                                                      a noisy pair (Ii , Ti ), we simultaneously rectify the image-
+3.3. High-Confidence Cross-Model Memory                               to-text direction (synthesizing a Soft Textual Prototype t̂)
+                                                                      and the text-to-image direction (synthesizing a Soft Visual
+To rectify noisy samples, we require a pristine source of             Prototype v̂). For brevity, we detail the generation of t̂
+semantic reference. Relying solely on the current mini-               given a noisy image query qv = fθ (Ii ); the generation of
+batch is insufficient due to its limited scope, while using           v̂ from a noisy text query qu = gϕ (Ti ) follows an identical
+a static dataset fails to track the evolving feature space.           symmetric procedure.
+Therefore, we maintain a Dynamic Cross-Model Memory
+Bank Q to store a history of reliable representations.                3.4.1. I NTRA - MODAL N EIGHBOR R ETRIEVAL
+3.3.1. E LITIST ROLLING U PDATE S TRATEGY                             We first query the peer memory bank QB to identify the
+                                                                      local semantic support set. Specifically, we retrieve the
+Standard memory banks typically enqueue all clean samples.            Top-K nearest neighbors based on the cosine similarity be-
+However, the identified clean set Dclean may still contain            tween the query qv and the stored visual keys {vk } ∈ QB .
+“hard” noise with borderline confidence. Moreover, as the             Crucially, to bridge the modality gap, we access the paired
+encoders evolve, stored features from early epochs become             textual values of these neighbors, denoted as Uneighbor =
+stale. To address these issues, we employ an Elitist Rolling          {u1 , . . . , uK }, to serve as the candidate semantic targets.
+Update mechanism:
+                                                                      3.4.2. P ROTOTYPE S YNTHESIS VIA G RAPH R EFINER
+• Dynamic High-Confidence Filtering: We compute a
+                       (t)
+  dynamic threshold τdyn at epoch t as the average confi-             A naive approach would be to average Uneighbor (mean
+  dence of the current clean set. Only samples satisfying             pooling) or select the top-1 candidate (discrete selection).
+        (t)                                                           However, the retrieved neighborhood may contain outliers
+  pi > τdyn are considered as elite candidates.
+                                                                      or irrelevant samples. To mitigate this, we treat Uneighbor
+• FIFO Maintenance with Gradient Detachment: We                       as nodes in a fully connected graph and employ a learnable
+  maintain the memory as a First-In-First-Out (FIFO) queue.           Graph Refiner to synthesize a robust prototype.
+  In each iteration, the embeddings of these elite candidates         The Graph Refiner consists of a Multi-Head Self-Attention
+  are detached from the computation graph and pushed into             (MHSA) layer followed by a feed-forward aggregation. Let
+  the queue, replacing the oldest entries.                            H ∈ RK×d denote the stacked features of Uneighbor . We
+                                                                      first compute the intra-neighborhood attention to model the
+This ensures that the memory bank Q preserves only the                relational density:
+most trustworthy and up-to-date representations of the man-
+                                                                                                 (HWQ )(HWK )T
+                                                                                                                   
+ifold.
+                                                                         Attn(H) = Softmax             √              (HWV )
+                                                                                                         dk
+3.3.2. C ROSS -M ODEL D ECOUPLING                                                                                             (7)
+To prevent confirmation bias—where a network reinforces               where WQ , WK , WV are learnable projection matrices.
+its own erroneous predictions—we leverage the co-training             This mechanism assigns higher weights to neighbors that
+
+                                                                  5
+                                                         Intra-Modal Neighbors Never Lie
+
+Table 1. Image-Text Retrieval on Flickr30K and MS-COCO 1K datasets under different noise ratios. * indicates the noise robust method.
+The best indicators are represented in bold.
+
+                                                         Flickr30k 1K Test                                   MS-COCO 5-fold 1K Test
+                                        Text Retrieval          Image Retrieval                   Text Retrieval        Image Retrieval
+       Noise       Method
+                                                                                       rSum                                                  rSum
+                                   R1        R5      R10       R1      R5    R10                R1     R5      R10    R1      R5      R10
+
+               NCR (NeurIPS’21)    73.5     93.2     96.6     56.9    82.4   88.5      491.1   76.6   95.6     98.2   60.5   88.8     95.0   515.0
+               BiCro (CVPR’23)     78.1     94.4     97.5     60.4    84.4   89.9      504.7   78.8   96.1     98.6   63.7   90.3     95.7   523.2
+               L2RM (CVPR’24)      77.9     95.2     97.8     59.8    83.6   89.5      503.8   80.2   96.3     98.5   64.2   90.1     95.4   524.7
+               CREAM (TIP’24)      77.4     95.0     97.5     58.7    84.1   89.8      502.3   78.9   96.3     98.7   63.3   90.5     95.3   523.0
+                ESC (CVPR’24)      79.0     94.8     97.5     59.1    83.8   89.1      503.3   79.2   97.0     99.1   64.8   90.7     96.0   526.8
+       0.2      GSC (CVPR’24)      78.3     94.6     97.8     60.1    84.5   90.5      505.8   79.5   96.4     98.9   64.4   90.6     95.9   525.7
+                SPS (IJCAI’25)     79.5     95.0     98.0     60.5    84.3   89.8      507.1   79.8   96.4     98.6   64.3   90.5     95.8   525.5
+               PCSR (AAAI’26)      78.7     95.1     97.9     60.9    83.7   89.4      505.7   80.5   97.3     98.9   63.8   89.7     95.1   525.4
+                    IN2 R          80.0     95.5     97.7     60.5    86.2   91.7      511.6   81.6   96.3     98.8   64.2   90.5     95.9   527.3
+               NCR (NeurIPS’21)    75.3     92.1     95.2     56.2    80.6   87.4      486.8   76.5   95.0     98.2   60.7   88.5     95.0   513.9
+               BiCro (CVPR’23)     74.6     92.7     96.2     55.5    81.0   87.4      487.5   77.0   95.9     98.3   61.1   89.2     94.9   517.1
+               L2RM (CVPR’24)      75.8     93.2     96.9     56.3    81.0   87.3      490.5   77.5   95.8     98.5   62.0   89.1     94.9   517.7
+               CREAM (TIP’24)      76.3     93.3     97.1     57.0    82.6   88.7      495.0   76.5   95.0     98.2   61.7   89.4     95.6   516.8
+                ESC (CVPR’24)      76.1     93.1     96.4     56.0    80.8   87.2      489.6   78.6   96.6     99.0   63.2   90.6     95.9   523.9
+       0.4      GSC (CVPR’24)      76.5     94.1     97.6     57.5    82.7   88.9      497.3   78.2   95.9     98.2   62.5   89.7     95.4   519.9
+                SPS (IJCAI’25)     77.8     93.6     97.1     57.3    83.5   89.6      498.9   79.2   95.9     98.5   63.3   89.8     95.4   522.1
+               PCSR (AAAI’26)      76.6     94.5     97.3     57.4    82.4   88.9      497.1   77.7   96.0     98.1   63.1   89.4     95.5   519.8
+                    IN2 R          78.3     94.5     97.2     58.7    84.7   90.7      504.1   79.8   95.8     98.6   63.4   90.1     95.4   523.2
+               NCR (NeurIPS’21)    68.7     89.9     95.5     52.0    77.6   84.9      468.6   72.7   94.0     97.6   57.9   87.0     94.1   503.3
+               BiCro (CVPR’23)     67.6     90.0     94.4     51.2    77.6   84.7      466.3   73.9   94.4     97.8   58.3   87.2     93.5   505.5
+               L2RM (CVPR’24)      70.0     90.8     95.4     51.3    76.4   83.7      467.6   75.4   94.7     97.9   59.2   87.4     93.6   508.4
+               CREAM (TIP’24)      70.6     91.2     96.1     53.3    79.2   87.0      477.4   74.7   94.7     98.0   59.7   88.0     94.6   509.9
+                ESC (CVPR’24)      72.6     90.9     94.6     53.0    78.6   85.3      475.0   77.2   95.1     98.1   61.1   88.6     94.9   515.0
+       0.6      GSC (CVPR’24)      70.8     91.1     95.9     53.6    79.8   86.8      478.0   75.6   95.1     98.0   60.0   88.3     94.6   511.7
+                SPS (IJCAI’25)     73.4     92.7     96.3     53.7    80.2   87.7      484.1   77.6   95.7     98.3   61.6   89.0     95.1   517.2
+               PCSR (AAAI’26)      72.8     91.9     95.8     54.8    79.7   86.5      480.5   76.3   94.8     97.9   61.7   87.5     94.0   512.2
+                    IN2 R          75.1     94.0     97.2     56.5    82.9   89.5      495.2   78.8   95.2     98.3   61.4   89.2     95.1   518.0
+               NCR (NeurIPS’21)     1.5      6.2      9.9      0.3     1.0    2.1       21.0   0.1    0.3       0.4    0.1   0.5       1.0    2.4
+               BiCro (CVPR’23)      2.3      9.2     17.2      2.6    10.2   16.8       58.3   62.2   88.6     94.6   47.4   79.2     88.5   460.5
+       0.8     L2RM (CVPR’24)      55.7     80.8     87.8     39.4    65.4   74.9      404.0   69.0   91.9     96.4   52.6   82.4     90.3   482.6
+               CREAM (TIP’24)      58.7     83.3     90.1     40.8    67.1   76.3      416.3   68.6   92.0     96.4   52.4   84.8     92.8   487.2
+               PCSR (AAAI’26)      63.1     87.1     93.2     44.6    70.9   78.6      437.5   71.6   92.9     96.7   55.3   83.9     93.3   493.7
+                    IN2 R          68.5     88.1     93.0     48.2    76.4   84.7      458.8   73.2   93.8     97.4   57.1   86.4     93.4   501.3
+
+
+
+
+form a semantic consensus and suppresses outliers. The                            Symmetrically, we derive q t2i (v̂) for the text-to-image di-
+refined features are then obtained via a residual connection                      rection. We then employ the robust objective from Eq. (1),
+and layer normalization:                                                          utilizing these calibrated distributions as targets:
+  H′ = LayerNorm(H + Dropout(Linear(Attn(H)))) (8)                                   Lrect =
+                                                                                               1
+                                                                                                  Lsce (q i2t (t̂), pi2t ) + Lsce (q t2i (v̂), pt2i )
+                                                                                                                                                     
+                                                                                               2
+Finally, we perform mean pooling over the refined nodes                                                                                              (11)
+H′ to synthesize the continuous Soft Textual Prototype t̂:                        This objective aligns noisy samples with the intra-modal
+                                                                                  consensus while regularizing against estimation bias via the
+                                  K
+                              1 X ′                                               RCE term.
+                       t̂ =      Hk                                    (9)
+                              K
+                                  k=1
+                                                                                  3.5. Overall Optimization
+Symmetrically, for a noisy text query, we obtain the Soft
+Visual Prototype v̂ using the same Graph Refiner shared                           The final training objective integrates the structural con-
+across modalities.                                                                straints from clean data and the rectified supervision from
+                                                                                  noisy data. For each network (e.g., MA ), the total loss is
+3.4.3. R ECTIFICATION O BJECTIVE                                                  defined as a weighted sum:
+To utilize the embedding prototype t̂ for supervision, we                                             Ltotal = Lclean + γLrect                       (12)
+convert it into a soft target distribution q i2t (t̂) by com-                     where Lclean (Eq. 5) consolidates the manifold structure us-
+puting its softmax-normalized similarity against the current                      ing the hard-margin ranking loss, and Lrect (Eq. 11) guides
+batch embeddings U :                                                              the rectification using the robust symmetric loss. The hyper-
+                                       t̂ · U ⊤
+                                               
+                                                                                  parameter γ balances the contribution of the synthesized
+                q i2t (t̂) = Softmax                      (10)                    supervision.
+                                            τ
+
+                                                                             6
+                                                Intra-Modal Neighbors Never Lie
+
+Table 2. Comparisons with real-world NCs on CC152K. The best        datasets. The baselines comprise NCR (Huang et al.,
+performance is highlighted in bold.
+                                                                    2021), BiCro (Yang et al., 2023), L2RM (Han et al., 2024),
+                                                                    CREAM (Ma et al., 2024), ESC (Yang et al., 2024), GSC
+                Text Retrieval    Image Retrieval                   (Zhao et al., 2024), SPS (Xie et al., 2025), and PCSR (Liu
+   Method                                              rSum
+            R@1 R@5 R@10 R@1 R@5 R@10                               et al., 2026). We evaluate IN2 R on Flickr30K and MS-
+                                                                    COCO with simulated noise rates of 20%–80% generated
+   NCR       39.5   64.5   73.5   40.3   64.6   73.2   355.6
+   BiCro     40.8   67.2   76.1   42.1   67.6   76.4   370.2        by random shuffling. Additionally, we validate performance
+   PC2       39.3   66.4   75.4   39.8   66.4   76.8   364.1        on the real-world CC152K dataset, which contains inherent
+   L2RM      43.0   67.5   75.7   42.8   68.0   77.2   374.2        web noise. All reported test results are based on the optimal
+   ESC       42.8   67.3   76.9   44.8   68.2   75.9   375.9        validation checkpoint.
+   GSC       42.1   68.4   77.7   42.2   67.6   77.1   375.1
+   SPS       40.8   67.9   77.7   42.4   69.5   78.0   376.3        Evaluation under Simulated Noise. Table 1 presents the
+   PCSR      43.7   67.7   77.2   43.1   67.7   76.3   375.3        comprehensive comparison between our proposed IN2 R
+   IN2 R     45.2   69.0   76.8   43.3   68.3   78.2   380.8        and state-of-the-art methods on Flickr30K and MS-COCO
+                                                                    datasets under varying symmetric noise ratios (20% to 80%).
+                                                                    The results demonstrate that IN2 R consistently outperforms
+4. Experiments                                                      existing baselines across all noise levels and metrics.
+4.1. Datasets                                                       Robustness in High-Noise Regimes: IN2 R excels as noise
+                                                                    increases. At 80% noise, where NCR collapses (21.0 rSum),
+We evaluate on three datasets: Flickr30K (Plummer et al.,
+                                                                    our method maintains remarkable stability. On Flickr30K,
+2015), MS-COCO (Lin et al., 2014), and Conceptual Cap-
+                                                                    IN2 R achieves 458.8 rSum, surpassing PCSR by 21.3 points.
+tions (CC) (Huang et al., 2021). Flickr30K contains 31K
+                                                                    Similarly, on MS-COCO, it sets a new SOTA of 501.3 (+7.6
+images (5 captions each); following (Faghri et al., 2018), we
+                                                                    points). This validates that our Graph-Guided Continuous
+use 1K images each for validation and testing. MS-COCO
+                                                                    Rectification effectively synthesizes reliable supervision
+comprises 123K images (5 captions each); we utilize 566K
+                                                                    even under extreme corruption.
+pairs for training, with 25K pairs each allocated for vali-
+dation and testing. CC is a noisy, web-harvested dataset            Improvements in Low-Noise Regimes: Even at lower noise
+(1 caption each). We use the CC152K subset, consisting              ratios (20% and 40%), where the clean data signal is
+of 150K training images and 1K each for validation and              stronger, IN2 R continues to refine the boundary of per-
+testing.                                                            formance. For instance, at 20% noise on Flickr30K, our
+                                                                    method achieves an rSum of 511.6, outperforming the
+Noise Simulation and Evaluation. Following (Huang et al.,
+                                                                    correction-based method SPS (507.1). This indicates that
+2021), we assess retrieval performance using Recall at K
+                                                                    our manifold stabilization strategy and intra-modal reason-
+(R@K), which quantifies the percentage of relevant items
+                                                                    ing are beneficial not just for correcting errors, but for learn-
+correctly identified within the top K retrieved results. We
+                                                                    ing a more discriminative feature space overall.
+report R@1, R@5, R@10, and the cumulative recall score
+(rSum) for bidirectional matching tasks.                            Evaluation under Real-World Noise.
+                                                                    We evaluate on Conceptual Captions (CC152K) to verify ro-
+4.2. Implementation Details                                         bustness against heterogeneous web noise. IN2 R generalizes
+Following standard protocols in noisy correspondence learn-         remarkably well, achieving a state-of-the-art rSum of 380.8,
+ing (Huang et al., 2021; Han et al., 2024) we utilize pre-          surpassing SPS (376.3) by 4.5 points. Notably, it attains a
+extracted features to ensure a fair comparison. For images,         Text Retrieval R@1 of 45.2%, significantly outperforming
+we use the bottom-up attention features extracted from a            PCSR (43.7%). While baselines like ESC show isolated
+pre-trained Faster R-CNN (2048-d). For text, we use a Bi-           strengths, IN2 R delivers the most balanced performance
+GRU to extract sentence embeddings. These features are              across modalities. This confirms that our intra-modal recti-
+projected into a common D-dimensional metric space (e.g.,           fication effectively handles naturally occurring mismatches
+D = 1024) via the learnable encoders fθ and gϕ . More               without requiring manual noise priors.
+implementation details are provided in the supplementary
+material.                                                           4.4. Ablation Studies
+                                                                    To provide a comprehensive understanding of the proposed
+4.3. Main Results                                                   framework, we conduct extensive ablation studies on the
+In this section, we carry out a comprehensive evaluation to         Flickr30K dataset. Unless otherwise specified, we report
+present the effectiveness of IN2 R, benchmarking it against         results under the 60% symmetric noise setting, as high-noise
+state-of-the-art (SOTA) baselines across three widely-used          scenarios best highlight the robustness of our rectification
+
+                                                                7
+                                                        Intra-Modal Neighbors Never Lie
+
+mechanism.                                                                      Table 4. Comparison of different rectification strategies on
+                                                                                Flickr30K (60% noise). Our Graph Refiner (Continuous) outper-
+Impact of Key Components. We investigate the contribu-                          forms Discrete Selection (Top-1) and naive averaging.
+tion of each module in IN2 R by incrementally adding them
+                                                                                                                                        Text Retrieval                  Image Retrieval
+to the baseline on the Flickr30K dataset under 60% noise.                                           Rectification Strategy
+                                                                                                                                        R@1          R@10               R@1          R@10            rSum
+The baseline, trained solely with the inter-modal ranking
+                                                                                                    None (Discard Noise)                70.0            93.9            50.6          85.5           467.7
+loss Linter , yields an rSum of 469.1. This relatively low                                          Hard Selection (Top-1)              73.1            95.1            53.3          87.0           479.6
+performance highlights the difficulty of learning robust rep-                                       Mean Pooling (Top-K)                74.0            95.8            55.1          87.7           485.2
+                                                                                                    Graph Refiner (Ours)                75.1            97.2            56.5          89.5           495.2
+resentations from heavily corrupted data without explicit
+correction.
+                                                                                                             Impact of Queue Size M                                         Impact of Neighbor Count K
+                                                                                          75                                                                   75
+Incorporating the intra-modal geometric constraints (Lintra )
+                                                                                          70                                                                   70
+improves the rSum to 475.2, a gain of 6.1 points. This sug-
+
+
+
+
+                                                                                R@1 (%)
+
+
+
+
+                                                                                                                                                     R@1 (%)
+                                                                                          65                                                                   65
+gests that stabilizing the feature manifold prevents the model
+                                                                                          60                                                                   60
+from overfitting to noisy correspondence, providing a bet-                                                                              Text R@1                                                          Text R@1
+                                                                                                                                                               55
+                                                                                          55                                            Image R@1                                                         Image R@1
+ter initialization for retrieval. Furthermore, applying the                                    2k       4k       8k        16k        32k      65k                  1   3   5           10                        20
+                                                                                                              Memory Queue Size (M)                                             Number of Neighbors (K)
+Graph-Guided Rectification (Lrect ) directly to the baseline
+yields a significant boost, reaching 483.7 rSum. Finally,                       Figure 3. Hyperparameter Sensitivity Analysis on R@1. We
+the full IN2 R framework, which integrates both manifold                        report the R@1 performance for both Text Retrieval (Blue) and Im-
+stabilization and continuous rectification, achieves the best                   age Retrieval (Orange). (Left) Performance improves with memory
+                                                                                size M and saturates at M = 32k. (Right) The retrieval accuracy
+performance with an rSum of 495.2. This represents a sub-
+                                                                                peaks at K = 5, demonstrating that a moderate neighbor count
+stantial total improvement of 26.1 points over the baseline,                    effectively balances semantic consensus and noise introduction.
+confirming that the two components work synergistically:
+Lintra constructs a reliable geometric basis, while Lrect                       attention models the global neighborhood consensus more
+actively synthesizes precise supervision signals from it.                       effectively than the fixed or local topologies of the baselines.
+                                                                                Additionally, replacing the Cross-Model Memory with a
+Table 3. Component-wise ablation study on Flickr30K (60%                        “Self-Memory” variant leads to a performance drop, con-
+noise). Linter : Inter-modal alignment; Lintra : Intra-modal geo-
+metric constraints; Lrect : Graph-guided rectification.                         firming that decoupling the query and retrieval networks is
+                                                                                essential to mitigate confirmation bias.
+          Components       Text Retrieval Image Retrieval
+    Linter Lintra Lrect R@1 R@10 R@1             R@10       rSum    ∆           Table 5. Comparison of different Graph Refiner architectures
+                                                                                on Flickr30K (60% noise).
+      ✓                    68.7   95.5   52.4    84.7       469.1    -
+      ✓       ✓            71.2   96.1   52.8    85.3       475.2 +[6.1]
+      ✓                ✓   73.6   96.8   53.7    86.8       483.7 +[14.6]                                                               Text Retrieval                  Image Retrieval
+                                                                                                    Rectification Strategy
+      ✓       ✓        ✓   75.1   97.2   56.5    89.5       495.2 +[26.1]                                                               R@1          R@10               R@1          R@10            rSum
+                                                                                                    GCN (Fixed Graph)                   74.9           95.1             53.7          87.6          486.1
+                                                                                                    GAT (Graph Attn)                    75.3           96.6             55.7          88.1          490.5
+Continuous Rectification vs. Discrete Selection. To val-                                            MHSA                                75.1           97.2             56.5          89.5          495.2
+idate that continuous synthesis outperforms discrete selec-
+tion, we compare our Graph Refiner with three strategies
+                                                                                Hyperparameter Sensitivity Analysis. We analyze the
+on Flickr30K (60% noise): None (discarding noise), Hard
+                                                                                sensitivity of IN2 R to memory size M and neighbor count K
+Selection (Top-1 neighbor), and Mean Pooling (Top-K
+                                                                                on Flickr30K (60% noise). Figure 3 shows that performance
+average). As shown in Table 4, Hard Selection (479.6)
+                                                                                improves with M and saturates around 32k, confirming that
+suffers from Single-Point Fragility, while Mean Pooling
+                                                                                a sufficiently large memory captures the global distribution
+(485.2) fails to filter outliers. In contrast, our Graph Re-
+                                                                                needed for high-fidelity retrieval. We thus adopt M =
+finer achieves an rSum of 495.2. By synthesizing a robust
+                                                                                65, 536. Regarding K, performance peaks at K = 5. This
+soft prototype via dynamic re-weighting, it outperforms dis-
+                                                                                configuration represents the optimal trade-off: it aggregates
+crete selection and mean pooling by 15.6 and 10.0 points,
+                                                                                sufficient local consensus to mitigate “Single-Point Fragility”
+respectively.
+                                                                                (K = 1) while avoiding the semantic dilution caused by
+Impact of Refiner Architecture and Memory Decou-                                distant outliers in larger neighborhoods (K > 10).
+pling. We validate our architectural choices on Flickr30K
+(60% noise) by comparing our Multi-Head Self-Attention                          5. Conclusion
+(MHSA) refiner against GCN and GAT variants. As shown
+in Table 5, MHSA achieves the best rSum of 495.2, signifi-                      In this paper, we proposed the Intra-modal Neighbor-
+cantly outperforming GCN (486.3) and GAT (490.5). This                          aware Noise Rectification (IN2 R) framework to address
+superiority suggests that MHSA’s dense, fully-connected                         noisy correspondence. Departing from the limitations of dis-
+
+                                                                            8
+                                               Intra-Modal Neighbors Never Lie
+
+crete selection, our work pioneers a shift towards continu-             soning and filtration for image-text matching. In AAAI,
+ous prototype synthesis, leveraging intra-modal geometric               volume 35, pp. 1218–1226, 2021.
+constraints to reconstruct reliable supervision targets. Exten-
+sive experiments on Flickr30K, MS-COCO, and Conceptual                Faghri, F., Fleet, D. J., Kiros, J. R., and Fidler, S. Vse++: Im-
+Captions demonstrate the superiority of our approach. IN2 R             proving visual-semantic embeddings with hard negatives.
+not only establishes new state-of-the-art results but also ex-          In BMVC, 2018.
+hibits remarkable stability in extreme noise regimes (up to           Han, H., Miao, K., Zheng, Q., and Luo, M. Noisy corre-
+80% noise) and real-world web-noise scenarios.                          spondence learning with meta similarity correction. In
+                                                                        Proceedings of the IEEE/CVF Conference on Computer
+Acknowledgments                                                        Vision and Pattern Recognition, pp. 7517–7526, 2023.
+This work was partially supported by the the National                 Han, H., Zheng, Q., Dai, G., Luo, M., and Wang, J. Learn-
+Science Foundation of China under Grant 62376175 and                    ing to rematch mismatched pairs for robust cross-modal
+22494712, the 111 Project under Grant B21044, the Science               retrieval. In Proceedings of the IEEE/CVF Conference
+Fund for Creative Research Groups of Sichuan Province                   on Computer Vision and Pattern Recognition, pp. 26679–
+Natural Science Foundation under Grant 2024NSFTD0035,                   26688, 2024.
+and the National Science Foundation of Sichuan Province
+under Grant 2025ZNSFSC0480.                                           Huang, Y., Wu, Q., Song, C., and Wang, L. Learning seman-
+                                                                        tic concepts and order for image and sentence matching.
+                                                                        In CVPR, pp. 6163–6171, 2018.
+Impact Statement
+                                                                      Huang, Z., Niu, G., Liu, X., Ding, W., Xiao, X., Wu, H.,
+This paper presents a method for training robust vision-
+                                                                        and Peng, X. Learning with noisy correspondence for
+language models using noisy datasets derived from the web.
+                                                                        cross-modal matching. Advances in Neural Information
+Our work contributes to the democratization of AI research
+                                                                       Processing Systems, 34:29406–29419, 2021.
+by reducing the reliance on expensive, human-annotated
+datasets, thereby making large-scale pre-training more ac-            Kim, D., Kim, N., and Kwak, S. Improving cross-modal
+cessible. However, we acknowledge that our approach relies              retrieval with set of diverse embeddings. In CVPR, pp.
+on the topological consensus of local neighborhoods to rec-             23422–23431, 2023.
+tify noisy labels. If the underlying data distribution contains
+societal biases or stereotypes, reliance on local consensus           Li, K., Zhang, Y., Li, K., Li, Y., and Fu, Y. Visual semantic
+could potentially amplify these biases by smoothing out mi-             reasoning for image-text matching. In ICCV, pp. 4654–
+nority but valid representations. While our method focuses              4662, 2019.
+on correcting correspondence noise, future work should con-
+                                                                      Li, K., Zhang, Y., Li, K., Li, Y., and Fu, Y. Image-text
+sider how such rectification mechanisms interact with data
+                                                                        embedding learning via visual and textual semantic rea-
+fairness and bias mitigation.
+                                                                        soning. TPAMI, 45(1):641–656, 2022.
+
+References                                                            Li, R., Wu, X., and Yang, Y. Noise self-correction via
+                                                                        relation propagation for robust cross-modal retrieval. In
+Chen, H., Ding, G., Liu, X., Lin, Z., Liu, J., and Han,                 Proceedings of the 33rd ACM International Conference
+  J. Imram: Iterative matching with recurrent attention                 on Multimedia, pp. 4748–4757, 2025.
+  memory for cross-modal image-text retrieval. In CVPR,
+  pp. 12655–12663, 2020.                                              Li, Y., Huang, H., Xu, J., and Huang, S.-L. Nac: Mitigat-
+                                                                        ing noisy correspondence in cross-modal matching via
+Chen, J., Hu, H., Wu, H., Jiang, Y., and Wang, C. Learning              neighbor auxiliary corrector. In ICASSP 2024-2024 IEEE
+  the best pooling strategy for visual semantic embedding.              International Conference on Acoustics, Speech and Sig-
+  In CVPR, pp. 15789–15798, 2021.                                       nal Processing (ICASSP), pp. 6815–6819. IEEE, 2024.
+Chun, S. Improved probabilistic image-text representations.           Lin, T.-Y., Maire, M., Belongie, S., Hays, J., Perona, P.,
+  arXiv preprint arXiv:2305.18171, 2023.                                Ramanan, D., Dollár, P., and Zitnick, C. L. Microsoft
+                                                                        coco: Common objects in context. In ECCV, pp. 740–755,
+Chun, S., Oh, S. J., De Rezende, R. S., Kalantidis, Y., and             2014.
+  Larlus, D. Probabilistic embeddings for cross-modal
+  retrieval. In CVPR, pp. 8415–8424, 2021.                            Liu, C., Mao, Z., Zhang, T., Xie, H., Wang, B., and Zhang,
+                                                                        Y. Graph structured network for image-text matching. In
+Diao, H., Zhang, Y., Ma, L., and Lu, H. Similarity rea-                 CVPR, pp. 10921–10930, 2020.
+
+                                                                  9
+                                              Intra-Modal Neighbors Never Lie
+
+Liu, Y., Liu, H., Wang, H., and Liu, M. Regularizing visual          Yang, S., Xu, Z., Wang, K., You, Y., Yao, H., Liu, T., and Xu,
+  semantic embedding with contrastive learning for image-              M. Bicro: Noisy correspondence rectification for multi-
+  text matching. IEEE SPL, 2022.                                       modality data via bi-directional cross-modal similarity
+                                                                       consistency. In Proceedings of the IEEE/CVF Conference
+Liu, Y., Liu, H., Wang, H., Meng, F., and Liu, M. Bcan:                on Computer Vision and Pattern Recognition, pp. 19883–
+  Bidirectional correct attention network for cross-modal              19892, 2023.
+  retrieval. TNNLS, 2023.
+                                                                     Yang, Y., Wang, L., Yang, E., and Deng, C. Robust noisy
+Liu, Y., Feng, W., Liu, Z., Huang, S., and Lv, J. Aligning
+                                                                       correspondence learning with equivariant similarity con-
+  information capacity between vision and language via
+                                                                       sistency. In Proceedings of the IEEE/CVF Conference
+  dense-to-sparse feature distillation for image-text match-
+                                                                       on Computer Vision and Pattern Recognition, pp. 17700–
+  ing. In Proceedings of the IEEE/CVF International Con-
+                                                                       17709, 2024.
+  ference on Computer Vision (ICCV), pp. 21679–21688,
+  October 2025a.                                                     Zha, Q., Liu, X., Peng, S.-J., Cheung, Y.-m., Xu, X., and
+                                                                       Wang, N. Recon: Enhancing true correspondence dis-
+Liu, Y., Liu, M., Huang, s., and Lv, J. Asymmetric vi-
+                                                                       crimination through relation consistency for robust noisy
+  sual semantic embedding framework for efficient vision-
+                                                                       correspondence learning. In Proceedings of the Computer
+  language alignment. In AAAI, 2025b.
+                                                                       Vision and Pattern Recognition Conference, pp. 29680–
+Liu, Z., Liu, Y., Feng, W., and Huang, S. Pcsr: Pseudo-label           29689, 2025.
+  consistency-guided sample refinement for noisy corre-
+                                                                     Zhang, K., Mao, Z., Wang, Q., and Zhang, Y. Negative-
+  spondence learning. In AAAI, 2026.
+                                                                       aware attention framework for image-text matching. In
+Ma, X., Yang, M., Li, Y., Hu, P., Lv, J., and Peng, X. Cross-          CVPR, pp. 15661–15670, 2022.
+ modal retrieval with noisy correspondence via consis-
+ tency refining and mining. IEEE transactions on image               Zhang, Q., Lei, Z., Zhang, Z., and Li, S. Z. Context-aware
+ processing, 33:2587–2598, 2024.                                       attention network for image-text retrieval. In CVPR, pp.
+                                                                       3536–3545, 2020.
+Plummer, B. A., Wang, L., Cervantes, C. M., Caicedo, J. C.,
+  Hockenmaier, J., and Lazebnik, S. Flickr30k entities:              Zhao, Z., Chen, M., Dai, T., Yao, J., Han, B., Zhang, Y., and
+  Collecting region-to-phrase correspondences for richer               Wang, Y. Mitigating noisy correspondence by geometri-
+  image-to-sentence models. In ICCV, pp. 2641–2649,                    cal structure consistency learning. In Proceedings of the
+  2015.                                                                IEEE/CVF Conference on Computer Vision and Pattern
+                                                                       Recognition, pp. 27381–27390, 2024.
+Qin, Y., Peng, D., Peng, X., Wang, X., and Hu, P. Deep
+  evidential learning with noisy correspondence for cross-
+  modal retrieval. In Proceedings of the 30th ACM Interna-
+  tional Conference on Multimedia, pp. 4948–4956, 2022.
+Qu, L., Liu, M., Wu, J., Gao, Z., and Nie, L. Dynamic
+  modality interaction modeling for image-text retrieval. In
+ SIGIR, pp. 1104–1113, 2021.
+Wang, H., Zhang, Y., Ji, Z., Pang, Y., and Ma, L. Consensus-
+ aware visual-semantic embedding for image-text match-
+ ing. In ECCV, pp. 18–34, 2020.
+Wang, Z., Liu, X., Li, H., Sheng, L., Yan, J., Wang, X., and
+ Shao, J. Camp: Cross-modal adaptive message passing
+ for text-image retrieval. In ICCV, pp. 5764–5773, 2019.
+Wei, J., Xu, X., Yang, Y., Ji, Y., Wang, Z., and Shen,
+ H. T. Universal weighting metric learning for cross-modal
+ matching. In CVPR, pp. 13005–13014, 2020.
+Xie, Y., Cai, S., Tong, T., Hu, P., and Zhu, X. Seeking proxy
+  point via stable feature space for noisy correspondence
+  learning. In Proceedings of the Thirty-Fourth Interna-
+  tional Joint Conference on Artificial Intelligence, 2025.
+
+                                                                10
+                                              Intra-Modal Neighbors Never Lie
+
+A. More Implementation Details
+Datasets and Features. Following standard protocols in noisy correspondence learning (Huang et al., 2021; Han et al.,
+2024) we utilize pre-extracted features to ensure a fair comparison. For images, we use the bottom-up attention features
+extracted from a pre-trained Faster R-CNN (2048-d). For text, we use a Bi-GRU to extract sentence embeddings. These
+features are projected into a common D-dimensional metric space (e.g., D = 1024) via the learnable encoders fθ and gϕ .
+More implementation details are provided in the supplementary material.
+Training Settings. Our framework is implemented in PyTorch and trained on a single NVIDIA RTX 3090 GPU. We employ
+the Adam optimizer with a mini-batch size of 128. The initial learning rate is set to 5e−4 , with a cosine annealing decay
+schedule. The training process consists of two phases: a warm-up phase for the first Ewarm = 5 epochs to initialize the
+feature space, followed by the co-training phase for another 40 epochs.
+Hyper-parameters. For the IN2 R specific components:
+The Cross-Model Memory Bank size M is set to 65536 for Flickr30K and 448000 for MS-COCO. For Neighbor Retrieval,
+we retrieve K = 5 visual neighbors to construct the semantic graph. The Graph Refiner is implemented as a single-layer
+Transformer encoder with 4 attention heads. The Loss Weights are empirically set as follows: the intra-modal constraint
+weight λintra = 0.1, and the rectification weight γ = 1.0. The Temperature τ in the robust symmetric loss is set to 0.05,
+and the balancing factor α/β for SCE is set to 1.0/1.0. The margin α in the ranking loss is set to 0.2.
+For synthetic noise experiments, we follow the standard noise generation protocol (Huang et al., 2021) to inject symmetric
+noise at ratios ranging from 20% to 80%.
+Training Procedure. The framework is optimized in an end-to-end manner. In the co-training phase, the peer networks MA
+and MB are updated simultaneously but interactively. Specifically, MA rectifies its noisy samples by retrieving semantic
+evidence from the frozen memory queue of MB (QB ), and vice versa. This cross-model interaction ensures that the error
+flow from one network does not directly propagate to the other, strictly enforcing the decoupling principle required for
+robust learning.
+Inference Efficiency. It is worth emphasizing that the proposed auxiliary modules—including the Cross-Model Memory
+Bank and the Graph Refiner—are exclusively constructed to facilitate robust training. During the inference phase, these
+modules are discarded. The model functions strictly as a standard dual-encoder, utilizing only the learned encoders fθ (·)
+and gϕ (·) to compute image-text similarity. Consequently, IN2 R incurs no additional computational overhead or memory
+cost during deployment compared to standard baselines.
+
+B. Justification for Backbone Selection
+Table 6. Performance comparison of pure backbones on Flickr30K (Clean setting). GPO achieves competitive performance comparable
+to the interaction-based SGRAF, yet maintains the efficiency of a dual-encoder architecture.
+
+                                                          Text Retrieval         Image Retrieval
+                         Method
+                                                       R@1 R@5 R@10 R@1 R@5 R@10
+                         GPO (Chen et al., 2021)        74.8    93.5   97.0     55.1   83.8     89.4
+                         SGR (Diao et al., 2021)        75.2    93.3   96.6     56.2   81.0     86.5
+                         SAF (Diao et al., 2021)        73.7    93.3   96.3     56.1   81.5     88.0
+                         SGRAF (Diao et al., 2021)      77.8    94.1   97.4     58.5   83.0     88.8
+
+In our main experiments, we adopt the Generalized Pooling Operator (GPO) (Chen et al., 2021) as the visual-semantic
+backbone. This decision is driven by the inherent design philosophy of our IN2 R framework, which prioritizes the
+“Index-and-Search” paradigm over computationally expensive cross-modal interactions.
+Efficiency Necessity for Intra-Modal Retrieval. While interaction-based methods like SGRAF (Diao et al., 2021)
+achieve superior performance on standard benchmarks (Table 6), they rely on complex graph reasoning and cross-attention
+mechanisms to compute similarity. This fine-grained interaction requires heavy computation for every image-text pair
+(O(N 2 ) complexity), prohibiting the use of offline indexing. In contrast, our IN2 R framework is built upon retrieving
+topological neighbors from a large-scale dynamic memory bank. GPO, as a dual-encoder, maps images and texts into
+
+                                                               11
+                                                  Intra-Modal Neighbors Never Lie
+
+compact global vectors, allowing for highly efficient nearest neighbor search via simple dot products. This efficiency is
+critical for the scalability of our rectification mechanism.
+Performance-Efficiency Trade-off. As shown in Table 6, GPO delivers competitive performance comparable to SGRAF on
+clean datasets, serving as a strong baseline. Therefore, we select GPO to demonstrate that our performance gains stem from
+the proposed rectification strategy rather than a heavy backbone.
+Universality of IN2 R. To further demonstrate that our method is backbone-agnostic, we integrated IN2 R with the SGRAF
+backbone on Flickr30K (60% noise). As presented in Table 7, IN2 R (SGRAF) consistently outperforms IN2 R (GPO),
+benefiting from the stronger representation power. However, this comes at a significant cost: the training time increases
+from 3.5 min/epoch to 30.0 min/epoch. We maintain that for practical large-scale retrieval, the efficiency of GPO is more
+valuable. Thus, we prioritize GPO in this work to highlight the efficiency and scalability of our approach.
+
+Table 7. Universality of IN2 R across different backbones on Flickr30K (60% noise). While IN2 R boosts the performance of SGRAF,
+we default to GPO to balance accuracy with significantly lower training costs.
+
+                                              Text Retrieval                 Image Retrieval
+                  Method                                                                                   Time/Epoch
+                                       R@1        R@5       R@10          R@1      R@5          R@10
+                  IN2 R (GPO)          75.1       94.0        97.2        56.5      82.9         89.5         3.5 min
+                  IN2 R (SGRAF)        75.8       94.6        97.3        57.4      83.1         89.5         30.0 min
+
+
+C. More Ablation Studies
+Hyperparameter Sensitivity on Loss Weights. Since the impact of the neighbor count K and memory size M has been
+discussed in the main text, we focus here on the sensitivity of the loss balancing terms: the Intra-modal Constraint Weight
+λintra and the Rectification Weight γ. Table 8 presents the results on Flickr30K (60% noise).
+Impact of Intra-modal Weight λintra . As shown in the left subtable, setting λintra = 0 (i.e., removing manifold stabilization)
+leads to a clear performance drop, verifying the necessity of geometric constraints. The performance peaks at λintra = 0.5.
+Increasing it further (e.g., to 1.0) degrades the results, likely because an overly strong intra-modal constraint may dominate
+the optimization, interfering with the primary objective of inter-modal alignment.
+Impact of Rectification Weight γ. Regarding γ, the model remains stable across a wide range [0.5, 1.5], demonstrating that
+our synthesized supervision is reliable and does not require delicate tuning to balance with the clean supervision.
+
+Table 8. Sensitivity analysis of loss weights on Flickr30K (60% noise). We analyze the trade-off between intra-modal constraints (λintra )
+and rectification strength (γ).
+             (a) Varying Intra-modal Weight λintra                                       (b) Varying Rectification Weight γ
+
+          λintra Text-R@1 Image-R@1 rSum                                             γ     Text-R@1 Image-R@1 rSum
+            0.0        68.7           52.4       469.1                              0.1       70.5           52.0        472.3
+            0.1        71.5           53.2       478.0                              0.5       73.2           55.1        488.0
+            0.5        75.1           56.5       495.2                              1.0       75.1           56.5        495.2
+            1.0        73.2           54.8       488.3                              1.5       74.5           56.2        493.8
+
+Impact of Memory and Retrieval Mechanism. We investigate the design of the retrieval mechanism, specifically the
+necessity of the Cross-Model Decoupling strategy. In our proposed IN2 R, network MA retrieves neighbors from the
+memory queue of its peer MB (QB ). We compare this against a Self-Memory baseline, where each network queries its own
+history (QA ). Table 9 demonstrates the results:
+
+• Self-Memory: Relying on self-generated history leads to suboptimal performance (rSum 482.7). This suggests that
+  without decoupling, the model tends to reinforce its own errors, leading to confirmation bias.
+• Cross-Memory (Ours): By leveraging the peer network’s consensus, our approach effectively breaks this self-reinforcing
+  loop, improving rSum by 12.5 points.
+
+                                                                     12
+

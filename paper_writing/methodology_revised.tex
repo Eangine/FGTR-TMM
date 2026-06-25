@@ -1,0 +1,278 @@
+\section{Methodology}
+This section presents the proposed Fine-Grained Token Rectification (FGTR) framework for robust image--text correspondence learning. As illustrated in Fig.~\ref{Fig2}, FGTR follows a global-to-local rectification pipeline. It first estimates sample reliability from per-sample contrastive losses and separates the training pairs into reliable and unreliable subsets using a two-component Gaussian Mixture Model (GMM). Reliable samples are used for standard contrastive alignment and serve as candidates for a clean prototype memory. For unreliable samples, FGTR retrieves a clean caption prototype from the memory as a global semantic anchor. Since such a prototype may still contain words that are not visually supported by the query image, FGTR further performs Local Token Calibration (LTC), which estimates token-wise visual support and softly suppresses unsupported tokens during textual aggregation.
+
+\subsection{Problem Definition}
+Let $\mathcal{D}=\{(I_i,T_i)\}_{i=1}^{N}$ denote a training set of $N$ image--text pairs, where $I_i$ is an image and $T_i$ is its associated caption. Each pair has an unobserved correspondence state $y_i\in\{0,1\}$, where $y_i=1$ indicates that the image and caption are semantically matched and $y_i=0$ indicates a mismatched pair. In web-collected data, $y_i$ is unavailable and the observed caption may be either entirely incorrect or only partially inconsistent with the image.
+
+Most noisy-correspondence methods address this problem at the instance level, treating a caption as either clean or noisy as a whole. FGTR instead considers a mixed-noise setting, where some tokens in a caption may be visually grounded while others may describe absent objects, attributes, or scenes. The goal is to learn robust image and text representations by correcting unreliable pairs globally and calibrating their textual supervision locally.
+
+\subsection{Feature Extraction and Visual Context Purification}
+We use CLIP~\cite{clip} as the image and text backbone. All representations used for similarity computation are $\ell_2$-normalized unless otherwise specified.
+
+\noindent\textbf{Image Encoder.}
+Given an image $I_i$, the image encoder produces a global image representation and a sequence of patch representations:
+\begin{equation}
+    \mathbf{V}_i=
+    \{\boldsymbol{v}_{i}^{\mathrm{cls}}, \boldsymbol{v}_{i,1}, \boldsymbol{v}_{i,2}, \ldots, \boldsymbol{v}_{i,L}\}
+    \in \mathbb{R}^{(L+1)\times d},
+\end{equation}
+where $\boldsymbol{v}_{i}^{\mathrm{cls}}$ is the global image feature, $\boldsymbol{v}_{i,k}$ is the $k$-th patch feature, $L$ is the number of patches, and $d$ is the feature dimension.
+
+\noindent\textbf{Text Encoder.}
+Given a caption $T_i$, the text encoder maps the tokenized sentence into contextual token embeddings:
+\begin{equation}
+    \mathbf{T}_i=
+    \{\boldsymbol{t}_{i,1}, \boldsymbol{t}_{i,2}, \ldots, \boldsymbol{t}_{i,M}\}
+    \in \mathbb{R}^{M\times d}.
+\end{equation}
+Following CLIP, the embedding at the \texttt{[EOS]} position is used as the sentence-level text representation, denoted by $\boldsymbol{t}_{i}^{\mathrm{eos}}$.
+
+\noindent\textbf{Visual Context Purification.}
+Local token calibration requires visual regions that are informative for semantic grounding. To reduce the influence of background or redundant patches, we select salient patches according to a hybrid score combining global relevance and visual distinctiveness. For the $k$-th patch, its relevance to the global image representation is
+\begin{equation}
+    a_{i,k} = (\boldsymbol{v}_{i,k})^{\top}\boldsymbol{v}_{i}^{\mathrm{cls}}.
+\end{equation}
+We further compute a distinctiveness score by measuring how different a patch is from the average patch representation:
+\begin{equation}
+    r_{i,k}= -(\boldsymbol{v}_{i,k})^{\top}\bar{\boldsymbol{v}}_i,
+    \qquad
+    \bar{\boldsymbol{v}}_i = \frac{1}{L}\sum_{k=1}^{L}\boldsymbol{v}_{i,k}.
+\end{equation}
+After min--max normalization within each image, the saliency score is defined as
+\begin{equation}
+    s_{i,k}=\operatorname{Norm}_{k}(a_{i,k})+\operatorname{Norm}_{k}(r_{i,k}).
+\end{equation}
+We retain the top-$\rho$ ratio of patches and obtain
+\begin{equation}
+    \widetilde{\mathbf{V}}_i
+    =
+    \{\widetilde{\boldsymbol{v}}_{i,1},\ldots,\widetilde{\boldsymbol{v}}_{i,L'}\},
+    \qquad
+    L'=\lceil \rho L\rceil .
+\end{equation}
+The visual context used for token calibration is
+\begin{equation}
+    \mathbf{U}_i
+    =
+    [\boldsymbol{v}_{i}^{\mathrm{cls}};\widetilde{\mathbf{V}}_i]
+    =
+    \{\boldsymbol{u}_{i,1},\ldots,\boldsymbol{u}_{i,L'+1}\}.
+\end{equation}
+
+\subsection{Sample Reliability Estimation}
+FGTR first estimates whether each observed image--text pair is reliable. The estimation is based on the symmetric contrastive loss of the pair. For a mini-batch of size $B$, the global similarity between image $I_i$ and caption $T_j$ is
+\begin{equation}
+    S_{ij}=(\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{t}_{j}^{\mathrm{eos}}.
+\end{equation}
+The per-sample image-to-text and text-to-image losses are
+\begin{equation}
+    \ell_i^{i2t}
+    =
+    -\log
+    \frac{\exp(S_{ii}/\tau)}
+    {\sum_{j=1}^{B}\exp(S_{ij}/\tau)},
+\end{equation}
+\begin{equation}
+    \ell_i^{t2i}
+    =
+    -\log
+    \frac{\exp(S_{ii}/\tau)}
+    {\sum_{j=1}^{B}\exp(S_{ji}/\tau)},
+\end{equation}
+where $\tau$ is the temperature. The per-sample matching loss is
+\begin{equation}
+    \ell_i=\frac{1}{2}\left(\ell_i^{i2t}+\ell_i^{t2i}\right).
+\end{equation}
+
+Following the small-loss principle, we fit the loss distribution with a two-component GMM:
+\begin{equation}
+    p(\ell)=\sum_{k=1}^{2}\varpi_k\mathcal{N}(\ell\mid\mu_k,\sigma_k^2),
+\end{equation}
+where $\varpi_k$, $\mu_k$, and $\sigma_k$ are the mixing coefficient, mean, and variance of the $k$-th component. The component with the smaller mean is regarded as the reliable component $k_{\mathrm{rel}}$. The clean confidence of sample $i$ is the posterior probability
+\begin{equation}
+    q_i = P(k_{\mathrm{rel}}\mid \ell_i).
+\end{equation}
+The binary reliability label is obtained by thresholding:
+\begin{equation}
+    \hat{y}_i=\mathbb{I}(q_i>\delta),
+\end{equation}
+where $\delta$ is a tunable threshold. We use $\delta_{\mathrm{init}}$ when the loss distribution is estimated by a full pass over the training set and $\delta_{\mathrm{bank}}$ when the GMM is fitted from the stored per-sample loss bank in later epochs.
+
+The training set is divided as
+\begin{equation}
+(I_i,T_i)\in
+\begin{cases}
+\mathcal{D}_c, & \hat{y}_i=1,\\
+\mathcal{D}_n, & \hat{y}_i=0.
+\end{cases}
+\end{equation}
+Reliable samples are optimized using their original captions. Unreliable samples are not directly optimized with their observed captions; instead, they are corrected by prototype retrieval and local token calibration.
+
+\subsection{Global Prototype Calibration}
+For an unreliable pair $(I_i,T_i)\in\mathcal{D}_n$, the observed caption may provide misleading supervision. FGTR therefore replaces it with a clean semantic prototype retrieved from reliable samples. This module provides a coarse global correction before token-level calibration is applied.
+
+\noindent\textbf{Clean Prototype Memory.}
+We maintain a first-in-first-out memory bank $\mathcal{M}$ of clean image--caption references:
+\begin{equation}
+    \mathcal{M}
+    =
+    \{(\boldsymbol{m}^{v}_{r}, C^{\mathcal{M}}_{r})\}_{r=1}^{|\mathcal{M}|},
+\end{equation}
+where $\boldsymbol{m}^{v}_{r}$ is a detached image representation and $C^{\mathcal{M}}_{r}$ is the corresponding caption token sequence. To reduce contamination from borderline samples, we apply a confidence-based filtering strategy before memory update. At epoch $e$, the dynamic clean threshold is
+\begin{equation}
+    \eta_e = \frac{1}{|\mathcal{D}_c|}\sum_{i:\hat{y}_i=1} q_i.
+\end{equation}
+Only reliable samples satisfying $q_i>\eta_e+\gamma$ are enqueued into $\mathcal{M}$, where $\gamma$ is a small margin. This strategy is used only to improve the purity of the prototype source and is not the main focus of FGTR.
+
+\noindent\textbf{Image-guided Prototype Retrieval.}
+For an unreliable image $I_i$, we retrieve top-$K$ visually similar entries from $\mathcal{M}$ according to image-image similarity:
+\begin{equation}
+    \mathcal{N}_i
+    =
+    \operatorname{TopK}_{K}
+    \left(
+    \{(\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{m}^{v}_{r}\}_{r=1}^{|\mathcal{M}|}
+    \right).
+\end{equation}
+The corresponding captions form a prototype candidate set
+\begin{equation}
+    \mathcal{P}_i=\{C^{\mathcal{M}}_{r}\mid r\in\mathcal{N}_i\}.
+\end{equation}
+Each candidate caption is encoded by the text encoder, and the best prototype is selected by image-text compatibility:
+\begin{equation}
+    C_i^{\star}
+    =
+    \arg\max_{C\in\mathcal{P}_i}
+    (\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{t}^{\mathrm{eos}}(C).
+\end{equation}
+The selected prototype $C_i^{\star}$ is used as the textual source for unreliable sample $i$.
+
+\noindent\textbf{Prototype Confidence Weighting.}
+Because the retrieved prototype may still be uncertain, FGTR assigns a confidence weight to each corrected unreliable sample. Let $c_{i,k}$ be the image-text compatibility score between $I_i$ and the $k$-th prototype candidate. We compute
+\begin{equation}
+    p_{i,k}=
+    \frac{\exp(c_{i,k}/\tau_c)}
+    {\sum_{j=1}^{K}\exp(c_{i,j}/\tau_c)},
+\end{equation}
+where $\tau_c$ is the confidence temperature. The normalized entropy is
+\begin{equation}
+    \widehat{H}_i
+    =
+    \frac{-\sum_{k=1}^{K}p_{i,k}\log(p_{i,k}+\epsilon)}
+    {\log K}.
+\end{equation}
+A lower entropy indicates a more decisive prototype selection. In implementation, this confidence can also be modulated by the average image-image similarity of retrieved neighbors. The final prototype weight is
+\begin{equation}
+    \omega_i
+    =
+    \operatorname{clip}
+    \left(
+    w_{\min}+(w_{\max}-w_{\min})(1-\widehat{H}_i)\bar{s}_i,
+    w_{\min},w_{\max}
+    \right),
+\end{equation}
+where $\bar{s}_i$ denotes the average retrieval similarity after non-negative clipping or normalization. If the memory bank has not reached a minimum size, unreliable samples are temporarily excluded from optimization to avoid unstable correction.
+
+\subsection{Local Token Calibration}
+Global Prototype Calibration provides a globally plausible caption for an unreliable image, but the selected prototype may still contain locally unsupported words. Local Token Calibration (LTC) addresses this residual token-level noise by estimating visual support for each token in the retrieved prototype.
+
+For a reliable sample, FGTR uses its original sentence-level representation as supervision. For an unreliable sample, we use the retrieved prototype $C_i^{\star}$. Let the text encoder output for $C_i^{\star}$ be
+\begin{equation}
+    \mathbf{T}(C_i^{\star})
+    =
+    \{\boldsymbol{t}_{i,1}^{\star},\ldots,\boldsymbol{t}_{i,M}^{\star}\}.
+\end{equation}
+Let $\Omega_i$ be the set of valid textual tokens after excluding special tokens such as \texttt{[SOS]}, \texttt{[EOS]}, \texttt{[PAD]}, and \texttt{[MASK]}.
+
+\noindent\textbf{Token Visual Support.}
+For each valid token $m\in\Omega_i$, we compute its strongest semantic response over the purified visual context:
+\begin{equation}
+    \phi_{i,m}
+    =
+    \max_{1\leq k\leq L'+1}
+    (\boldsymbol{t}_{i,m}^{\star})^{\top}\boldsymbol{u}_{i,k}.
+\end{equation}
+The token reliability is obtained by min--max normalization within the caption:
+\begin{equation}
+    \rho_{i,m}
+    =
+    \operatorname{Norm}_{m\in\Omega_i}(\phi_{i,m}),
+    \qquad
+    \rho_{i,m}\in[0,1].
+\end{equation}
+For invalid tokens, $\rho_{i,m}=0$.
+
+\noindent\textbf{Reliability-weighted Aggregation.}
+We convert token reliability into a soft aggregation weight:
+\begin{equation}
+    g_{i,m}=\beta+(1-\beta)\rho_{i,m}, \qquad m\in\Omega_i,
+\end{equation}
+where $\beta$ is a residual lower bound. The reliability-weighted token representation is
+\begin{equation}
+    \bar{\boldsymbol{t}}_{i}
+    =
+    \operatorname{Normalize}
+    \left(
+    \frac{\sum_{m\in\Omega_i}g_{i,m}\boldsymbol{t}_{i,m}^{\star}}
+    {\sum_{m\in\Omega_i}g_{i,m}+\epsilon}
+    \right).
+\end{equation}
+Finally, we fuse the sentence-level prototype representation with the reliability-weighted token representation:
+\begin{equation}
+    \widehat{\boldsymbol{t}}_{i}
+    =
+    \operatorname{Normalize}
+    \left(
+    \lambda\boldsymbol{t}^{\mathrm{eos}}(C_i^{\star})
+    +(1-\lambda)\bar{\boldsymbol{t}}_{i}
+    \right),
+\end{equation}
+where $\lambda$ controls the contribution of global sentence semantics. The calibrated representation $\widehat{\boldsymbol{t}}_{i}$ replaces the original noisy caption representation for contrastive learning.
+
+\subsection{Optimization Objective}
+After reliability estimation and correction, each sample contributes to training with a sample-level prior. For reliable samples, the prior is $1$. For unreliable samples with a valid prototype, the prior is the prototype confidence $\omega_i$. During warm-up or when no valid prototype is available, the prior of unreliable samples is set to zero.
+\begin{equation}
+    \pi_i=
+    \begin{cases}
+    1, & (I_i,T_i)\in\mathcal{D}_c,\\
+    \omega_i, & (I_i,T_i)\in\mathcal{D}_n \text{ and a prototype is available},\\
+    0, & \text{otherwise}.
+    \end{cases}
+\end{equation}
+Let $\boldsymbol{z}_i$ denote the textual representation used for sample $i$:
+\begin{equation}
+    \boldsymbol{z}_i=
+    \begin{cases}
+    \boldsymbol{t}_{i}^{\mathrm{eos}}, & (I_i,T_i)\in\mathcal{D}_c,\\
+    \widehat{\boldsymbol{t}}_{i}, & (I_i,T_i)\in\mathcal{D}_n.
+    \end{cases}
+\end{equation}
+The final weighted contrastive loss is
+\begin{equation}
+    \mathcal{L}
+    =
+    \frac{1}{\sum_{i=1}^{B}\pi_i+\epsilon}
+    \sum_{i=1}^{B}
+    \pi_i
+    \cdot
+    \frac{\mathcal{L}_{i}^{i2t}+\mathcal{L}_{i}^{t2i}}{2},
+\end{equation}
+where
+\begin{equation}
+    \mathcal{L}_{i}^{i2t}
+    =
+    -\log
+    \frac{\exp((\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{z}_{i}/\tau)}
+    {\sum_{j=1}^{B}\exp((\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{z}_{j}/\tau)},
+\end{equation}
+\begin{equation}
+    \mathcal{L}_{i}^{t2i}
+    =
+    -\log
+    \frac{\exp(\boldsymbol{z}_{i}^{\top}\boldsymbol{v}_{i}^{\mathrm{cls}}/\tau)}
+    {\sum_{j=1}^{B}\exp(\boldsymbol{z}_{i}^{\top}\boldsymbol{v}_{j}^{\mathrm{cls}}/\tau)}.
+\end{equation}
+This objective allows reliable samples to provide full supervision, while corrected unreliable samples contribute according to retrieval confidence.
+
+\subsection{Training Procedure}
+FGTR is trained in two stages. In the warm-up stage, sample reliability is estimated from the contrastive loss, and unreliable samples are suppressed to avoid unstable correction. Reliable samples are optimized with the standard alignment objective and are gradually used to populate the prototype memory. In the joint calibration stage, the sample partition is refreshed at the beginning of each epoch. Reliable samples continue to provide direct supervision and memory candidates. For unreliable samples, FGTR retrieves clean prototypes, estimates prototype confidence, applies Local Token Calibration, and optimizes the resulting calibrated representations with the weighted contrastive objective.

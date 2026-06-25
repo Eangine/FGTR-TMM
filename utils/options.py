@@ -23,7 +23,7 @@ def get_args():
     
     parser.add_argument('--min_bank_size', type=int, default=1024)
     parser.add_argument('--reliability_gamma', type=float, default=1)
-    parser.add_argument('--pooling_beta', type=float, default=0.2)
+    parser.add_argument('--pooling_beta', type=float, default=0.0)
     parser.add_argument('--attn_entropy_weight', type=float, default=0.5)
     parser.add_argument('--global_fusion_lambda', type=float, default=0.9)
     parser.add_argument('--ntr_chunk_size', type=int, default=512)

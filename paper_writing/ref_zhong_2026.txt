@@ -1,0 +1,764 @@
+                                                                         Information Fusion 130 (2026) 104156
+
+
+                                                                       Contents lists available at ScienceDirect
+
+
+                                                                           Information Fusion
+                                                              journal homepage: www.elsevier.com/locate/inffus
+
+
+Full Length Article
+
+Negative can be positive: A stable and noise-resistant complementary
+contrastive learning for cross-modal matching
+Fangming Zhong                     a,b , Xinyu He             a,b , Haiquan Yu              a,b , Xiu Liu        a,b , Suhua Zhang          a,b,∗
+
+a School of Software, Dalian University of Technology, Dalian, China
+b
+    Key Laboratory for Ubiquitous Network and Service Software of Liaoning Province, Dalian, China
+
+
+
+
+a r t i c l e             i n f o                            a b s t r a c t
+
+Keywords:                                                    Cross-modal matching with noisy correspondence has drawn considerable interest recently, due to the mis-
+Cross-modal matching                                         matched data imposed inevitably when collecting data from the Internet. Training on such noisy data often leads
+Contrastive learning                                         to severe performance degradation, as conventional methods tend to overﬁt rapidly to wrongly mismatched pairs.
+Complementary learning
+                                                             Most of the existing methods focus on predicting more reliable soft correspondence, generating higher weights
+                                                             for the pairs that are more likely to be correct. However, there still remain two limitations: (1) they ignore the
+                                                             informative signals embedded in the negative pairs, and (2) the instability of existing methods due to their sensi-
+                                                             tivity to the noise ratio. To address these issues, we explicitly take the negatives into account and propose a stable
+                                                             and noise-resistant complementary learning method, named Dual Contrastive Learning (DCL), for cross-modal
+                                                             matching with noisy correspondence. DCL leverages both positive pairs and negative pairs to improve the robust-
+                                                             ness. With the complementary contrastive learning, the negative pairs also contribute positively to the model
+                                                             optimization. Speciﬁcally, to fully explore the potential of mismatched data, we ﬁrst partition the training data
+                                                             into clean and noisy subsets based on the memorization eﬀect of deep neural networks. Then, we employ vanilla
+                                                             contrastive learning for positive matched pairs in the clean subset. As for negative pairs including the noisy
+                                                             subsets, complementary contrastive learning is adopted. In such doing, whatever the level of noise ratio is, the
+                                                             proposed method is robust to balance the positive information and negative information. Extensive experiments
+                                                             indicate that DCL signiﬁcantly outperforms the state-of-the-art methods and exhibits remarkable stability with
+                                                             an extremely low variance of R@1. Speciﬁcally, the R@1 scores of our DCL are 7% and 9.1% higher than NPC on
+                                                             image-to-text and text-to-image, respectively. The source code is released at https://github.com/hxy2969/dcl.
+
+
+
+1. Introduction                                                                                      cross-modal matching models, such as CLIP [4]. Nevertheless, it is hard
+                                                                                                     to accurately annotate exactly matched samples because the textual de-
+    Recently, multimodal retrieval has drawn much attention with the                                 scription of images or videos is very subjective. Without meticulous
+explosive growth of multimedia data, especially with the populariza-                                 manual annotation, it is inevitable that noise (i.e., mismatched pairs)
+tion of short-form video social platforms, such as TikTok and Instagram                              will be introduced into the collected data, a.k.a noisy correspondence.
+Reels. Cross-modal matching is one of the most signiﬁcant techniques                                 Undoubtedly, the noisy pairs will wrongly guide the cross-modal match-
+that tries to project diﬀerent modalities into a shared feature space to                             ing models due to the memorization eﬀect of deep neural networks and
+match paired samples. It has powered various real-world applications,                                remarkably degrade the retrieval performance. Although the noisy cor-
+e.g., image captioning [1,2], visual question answering [3], and the ap-                             respondence issue is a widely existing problem [5], but has been rarely
+plication in smart agriculture, i.e., cross-modal retrieval among text, im-                          explored in cross-modal matching. The paradigm most similar to such an
+ages, and videos of plant diseases.                                                                  issue is the noisy label in classiﬁcation [6,7]. Unfortunately, the noisy
+    Although cross-modal matching has achieved promising perfor-                                     correspondence refers to wrongly aligned cross-modal pairs, which is
+mance, it heavily relies on large-scale high-quality labeled data. How-                              more challenging than categorical annotation errors [8–10].
+ever, collecting such ideal data is time-consuming and extremely ex-                                     To date, many eﬀorts have been made to address this issue. Most
+pensive. In practice, the most widely used datasets are harvested from                               of the previous works [11–13] rectify the correspondence labels, and
+the Internet by collecting the co-occurred image-text pairs to train                                 train the models with robust loss functions with a soft margin to counter
+
+
+    ∗ Corresponding author.
+
+   E-mail addresses: fmzhong@dlut.edu.cn (F. Zhong), xinyuhe@mail.dlut.edu.cn (X. He), yhq@dlut.edu.cn (H. Yu), liuxiu912@gmail.com (X. Liu),
+suhua_zhang@mail.dlut.edu.cn (S. Zhang).
+
+https://doi.org/10.1016/j.inﬀus.2026.104156
+Received 3 September 2025; Received in revised form 10 January 2026; Accepted 14 January 2026
+Available online 16 January 2026
+1566-2535/© 2026 Elsevier B.V. All rights are reserved, including those for text and data mining, AI training, and similar technologies.
+F. Zhong et al.                                                                                                               Information Fusion 130 (2026) 104156
+
+
+                                                                                     we partition the data into clean and noisy subsets by modeling the per-
+                                                                                     sample loss distribution of the dataset through a Beta-Mixture-Model
+                                                                                     (BMM). The Beta Mixture Model (BMM) demonstrates superior model-
+                                                                                     ing capability for the skewed loss distribution of clean data when com-
+                                                                                     pared to conventional Gaussian-Mixture-Model (GMM). Secondly, we
+                                                                                     adopt a vanilla cross-modal contrastive learning on the clean subset to
+                                                                                     learn common representations by maximizing the mutual information
+                                                                                     between well-matched data. Thirdly, complementary contrastive learn-
+                                                                                     ing is adopted to the negative pairs. Since selecting incorrect comple-
+                                                                                     mentary pairs has a much lower likelihood than selecting correct pairs
+                                                                                     in a noisy dataset, complementary learning could reduce the risk of pro-
+                                                                                     viding incorrect supervision and smooth the losses. In addition, diﬀer-
+                                                                                     ent from RCL [17], the negative pairs in this paper consist of both the
+Fig. 1. Stability of diﬀerent methods with the increase of noise ratio via R@1       selected noisy subset and the original mismatched pairs. Finally, our
+of Image-to-Text.                                                                    method can beyond the noisy correspondence that trains a robust cross-
+                                                                                     modal matching model on both the matched and mismatched set with
+                                                                                     positive and negative learning, respectively. Such paradigm contributes
+the negative impact of noise. For example, Noisy Correspondence Rec-                 signiﬁcantly to the consistent and stable performance under diﬀerent
+tiﬁer (NCR) [11] is the ﬁrst touch on this issue. NCR partitions the data            levels of noise ratios. Extensive experiments aﬃrm that the proposed
+into clean and noisy subsets, then employs an adaptive model to rec-                 DCL demonstrates notably superior performance against the existing
+tify the correspondence. Based on the assumption that similar images                 methods.
+should correspond to similar textual descriptions, Bidirectional Cross-                  The main contributions are summarized as follows:
+modal similarity consistency (BiCro) [12] estimates soft labels for noisy
+                                                                                      • We propose a stable and noise-resistant Dual Contrastive Learning
+data pairs to reﬂect their true correspondence degree. Similarly, since
+the semantic variations caused by image changes should be proportional                  (DCL) paradigm for robust cross-modal matching with correspon-
+to those caused by text changes for any two matched samples, an Equiv-                  dence. Our DCL highlights the challenge of diﬀerent levels of noise
+ariant Similarity Consistency (ESC) [14] is presented to facilitate ro-                 ratios and explores both positive and negative learning to leverage
+bust clean and noisy data separation. By viewing sample matching as                     the contributions of matched and mismatched pairs to tackle the
+classiﬁcation tasks within the batch, Self-Reinforcing Errors Mitigation                challenge.
+                                                                                      • We adopt complementary contrastive learning to fully explore the
+(SREM) [15] generates classiﬁcation logits for the given sample. Then
+SREM introduces energy uncertainty to reﬁne sample ﬁltration and uti-                   potential positive contribution of negative pairs, which avoids the
+lizes swapped classiﬁcation entropy to estimate the model’s sensitivity                 noisy accumulation of noise-rectify methods.
+                                                                                      • Extensive experiments and analysis are conducted on MS-COCO,
+of selected clean samples. Unlike traditional paradigms that mainly fo-
+cus on samples ﬁltering or correction, Negative Pre-aware Cross-modal                   Flickr30K, and CC120K. The results indicate that DCL signiﬁcantly
+(NPC) matching [16] proposes a negative pre-aware paradigm, which                       outperforms the state-of-the-art methods and exhibits superior sta-
+adaptively estimates the potential negative impact of each sample be-                   bility with extremely lower variances of R@1.
+fore the model learning. Then, a small conﬁdence weight will be as-
+signed to high-negative samples. Though promising results have been                  2. Related works
+achieved, the noise-rectify and re-weighting paradigms still have two
+limitations. Most of them ignore the positive contribution of negative               2.1. Image-text matching
+pairs. In addition, the label correction may cause new noise resulting
+noisy accumulation due to the conﬁrmation bias problem in the exis-                      Cross-modal matching [18–20] focuses on mapping data to a com-
+tence of severe noise thus cannot maintain the performance stability.                mon feature space to measure the similarity scores of image-text pairs.
+The performance of these methods decreases dramatically as the noise                 For instance, SCAN [21] proposes stacked cross attention in order to
+ratio increases.                                                                     align image regions and words. SGRAF [22] proposes SGR and SAF
+    Diﬀerent from previous methods, Robust Cross-modal Learning                      modules to compute the ﬁnal similarity scores by graph inference and
+(RCL) [17] proposes a novel complementary contrastive learning                       attention weighting respectively. Considering the eﬀect of negatives in
+paradigm that employs negative information exclusively. The negative                 optimization, VSE++ [23] improves the triplet loss with hard negative
+information is more reliable compared to positive information, eﬀec-                 pairs. Similarly, NAAF [24] improves the accuracy of the model by sep-
+tively mitigating overﬁtting risks. Evidently, complementary informa-                arating the distributions of matched and unmatched word-region simi-
+tion demonstrates a signiﬁcantly lower probability of containing false               larities. To aggregate the local features, a generalized pooling operator
+ground truth compared to positive information, thus avoiding overﬁt-                 (GPO) [25] is proposed to learn adaptive weights for diﬀerent pool-
+ting to false supervision. However, RCL ignores the impact of noise ratio.           ing strategies, which achieves promising pooling performance. Mean-
+With the noise ratio decreasing, the increasing informative and valuable             while, Pan et al. proposed to perform ﬁne-grained image-text match-
+clean pairs are ignored, leading the model to be underﬁtting. Therefore,             ing by Cross-modal Hard Aligning Network (CHAN) [26]. They iden-
+the existing methods still exhibit unstable performance with a consid-               tiﬁed a limitation in cross-attention mechanisms: the generation of re-
+erably larger variance than ours, as shown in Fig. 1 where we employ                 dundant or irrelevant region-word alignments, which leads to declining
+variance (var) of Recall@1 at diﬀerent noise ratios to illustrate the per-           retrieval accuracy and limiting eﬃciency. Therefore, CHAN exploits the
+formance stability.                                                                  most relevant region-word pairs and eliminates all other alignments. In
+    To tackle the above issues, we propose a stable and noise-resistant              addition to these matching models, cross-model hashing [27–30] has
+complementary learning method, named Dual Contrastive Learning                       been widely explored to improve retrieval eﬃciency. Since pre-trained
+(DCL), for cross-modal matching with noisy correspondence. Diﬀerent                  visual-language models [4,31,32] have demonstrated strong cross-
+from previous methods, DCL aims at exploring the positive contribu-                  modal learning and zero-shot learning performance in recent years, CLIP
+tion of negative pairs and pursuing stable and consistent performance                [4] is becoming increasingly popular in cross-modal matching. How-
+under various noise ratios with the combination of both positive and                 ever, the above methods cannot perform well on datasets with noisy
+complementary learning. The framework is illustrated in Fig. 2. Firstly,             correspondence.
+
+                                                                                 2
+F. Zhong et al.                                                                                                                  Information Fusion 130 (2026) 104156
+
+
+
+
+Fig. 2. The framework of our proposed method, which consists of three components: a) feature extraction, b) data division by BMM, and c) dual contrastive learning,
+including vanilla contrastive learning on positive pairs and complementary contrastive learning on negative pairs.
+
+
+2.2. Noisy correspondence learning                                                  noise-rectify methods, NPC [16] builds a memory bank to measure the
+                                                                                    negative eﬀect of data pairs and proposes a negative pre-aware and re-
+    Huang et al. [11] ﬁrst introduced noisy correspondence to cross-                weighting paradigm.
+modal retrieval, and proposed NCR to solve this problem. Inspired by                    However, the performance of these methods degrades signiﬁcantly
+the memorization eﬀect of DNNs, NCR divides the dataset into clean                  as the noise rate increases. In this work, we maintain the model stability
+and noisy subsets and predicts soft labels. Finally, it employs soft triplet        by utilizing both positive and negative learning.
+loss to achieve robust cross-modal matching. Following NCR, BiCro [12]
+adopts BMM to ﬁt the distribution of the loss, and computes the la-                 2.3. Noisy multimodal contrastive learning
+bels based on the bidirectional cross-modal consistency. CTPR [33] and
+CREAM [34] consider that the pairs with partial relevant semantic are                   Noisy multimodal contrastive learning is an eﬀective paradigm for
+diﬃcult to be divided correctly, then split the dataset into three subsets.         representation learning by discarding semantically irrelevant informa-
+Diﬀerent from these NCR-based methods, MSCN [35] proposes a meta                    tion and fusing multi-modal information. Ge et al. [41] proposed that
+leaning module to map similarity scores into soft labels. In addition,              CNNs depend on low-level features with insuﬃcient semantics, which
+DECL [8] introduces a deep evidence learning paradigm to capture un-                damages the robustness of the model. Texture-based and patch-based
+certainty induced by noise. Moreover, RCL [17] prevents the model from              augmentations are applied to construct negative samples that only main-
+overﬁtting to the noise by exploiting complementary negative pairs,                 tain redundant information. Therefore, the approach achieves a better
+rather than matched pairs. Zha et al. [36] presented UCPM, which in-                classiﬁcation accuracy and generalization ability. MMCL [42] proposes
+troduces Uncertainty Guided Division (UGD) strategy to divide the cor-              a contrastive learning framework which combines uni-modal contrastive
+rupted training data into conﬁdent matched (clean), easily-identiﬁable              coding and cross-modal contrastive prediction. It distracts robust uni-
+mismatched (noisy) and hardly-determined hard subsets.                              modal representations and capture inter-modal interactions. Further-
+    To address the problems of excessive memorizing/overﬁtting and                  more, MMCL improves the performance of prediction network with
+unreliable correction, Cross-modal Robust Complementary Learning                    instance-based and sentiment-aware tasks to maintain sentiment-related
+(CRCL) [37], which combined a novel active complementary loss and an                dynamics. Guo et.al[43]. proposed that diﬀerent learning paces of pos-
+eﬃcient self reﬁning correspondence correction. In [38], Liu et al. intro-          itive and negative pairs can also negatively impact model performance.
+duced a novel Self-Drop and Dual-weight (SDD) approach, which ﬁrstly                They introduced PN-NCE, a pace-adaptive multi-modal contrastive ob-
+partitions data into four types: clean and signiﬁcant, clean yet insignif-          jective that addresses the problems of imbalanced paces and false labels.
+icant, vague, and noisy. Moreover, SDD employs self-drop to discard                 Then, it generates more modality-invariant fusion outputs by measur-
+noisy samples to eﬀectively mitigate the impact of noise. Duan et al.               ing the distance between the fused representation and the uni-modal
+[39] introduced Pseudo-Classiﬁcation based Pseudo-Captioning (PC2 ),                representations. M3 ixup [44] employs multiple modal fusion modes
+which includes threefold strategies. Firstly, PC2 establishes an auxiliary          to learn multi-modal semantics and enhances the robustness against
+“pseudo-classiﬁcation” task that steers the model to learn image-text               missing modalities. Firstly, uni-modal and multi-modal mixup strategies
+semantic similarity through a non-contrastive mechanism. Secondly, it               are utilized to enhance the representations while improving robustness
+generate pseudo-captions to provide more informative and tangible su-               against missing modalities. Then, it extends the mixed strategies to the
+pervision for each mismatched pair. Then, correspondence correction is              contrastive learning loss function, further aligning the multi-modal and
+conducted with the assistance of the oscillation of pseudo-classiﬁcation.           original representations. Han et al. [45] proposed a two-step framework
+Similarly, Relation Consistency (ReCon) [40] is proposed to discrimi-               that is robust against noisy labels and noisy correspondence. A noise
+nate the true correspondences and mitigate the adverse impact caused                estimation component combined with category-level contrastive loss is
+by mismatches, which leverages a novel relation consistency learn-                  introduced to mitigate consistency between diﬀerent modals. The fol-
+ing to ensure the dual-alignment. Meanwhile, a Geometrical Structure                lowing hybrid-supervised component measures distance among features
+Consistency (GSC) method [13] is introduced, which maintains both                   as reﬁned labels and guides training progress. This method achieves su-
+intra-modal and cross-modal geometric relationships through structure-              perior performance on both synthetic and real datasets.
+preserving constraints, allowing for the accurate discrimination of noisy               Diﬀerent from the previous methods, our proposed DCL adopt com-
+samples based on structural diﬀerences. Then, GSC reﬁnes the learn-                 plementary contrastive learning to fully explore the potential positive
+ing of geometrical structures. To avoid the unstable performance of                 contribution of negative data.
+
+
+                                                                                3
+F. Zhong et al.                                                                                                                               Information Fusion 130 (2026) 104156
+
+
+3. Methodology                                                                         risk could be approximated by:
+
+3.1. Preliminary                                                                       𝓁𝑖 = (ℎ(𝑉𝑖 , 𝑇𝑖 ), 𝑌̃𝑖𝑖 ) + (ℎ(𝑇𝑖 , 𝑉𝑖 ), 𝑌̃𝑖𝑖 ),                                    (6)
+
+                                                                                       where (⋅, ⋅) is cross-entropy loss.
+3.1.1. Problem deﬁnition
+                                                                                           Then, we can divide the data into clean and noisy subsets accord-
+    Cross-modal matching aims to increase the similarity of positive
+                                                                                       ing to the decision loss. Most of the previous studies employs Gaus-
+pairs, while decreasing the similarity of negative pairs. Given a image-
+                                                                                       sian Mixture Model (GMM) to model the distribution of per-sample loss.
+text dataset  = {𝑉 , 𝑇 , 𝑌 }, where 𝑉 = {𝑉𝑖 }𝑁 𝑖=1
+                                                    is the visual training set
+                                                                                       However, since the loss of clean data is very close to 0, the Beta Mix-
+with 𝑁 samples, 𝑇 = {𝑇𝑖 }𝑁   𝑖=1
+                                 is the corresponding text set with 𝑁 sam-
+                                                                                       ture Model (BMM) can ﬁt the loss distribution better than GMM [12].
+ples, and 𝑌 ∈ {0, 1}𝑁×𝑁 is a matrix representing the correspondence la-
+                                                                                       Therefore, we adopt a two-component BMM to ﬁt the distribution of per-
+bels, where 𝑌𝑖𝑗 = 1 indicates (𝑉𝑖 , 𝑇𝑗 ) is matched, otherwise 𝑌𝑖𝑗 = 0. Gen-
+                                                                                       sample loss of the training data. The overall probability density function
+erally, the given dataset is regarded as well-matched, i.e., all diagonal
+                                                                                       is:
+elements of 𝑌 are 1, and other elements are 0. However, there inevitably
+exist some unknown mismatched pairs are annotated as matched, i.e.,                             ∑
+                                                                                                1
+
+noise correspondence. Hence, for easy reading, we set the initial cor-                 𝑝(𝓁) =         𝜆𝑘 𝑝(𝓁 ∣ 𝑘),                                                            (7)
+                                                                                                𝑘=0
+respondence label matrix with noise as 𝑌̃ , and the predicted true label
+matrix as 𝑌 . For computing the similarity score, We project the images                where 𝜆𝑘 refers to the mixture coeﬃcient, and 𝑝(𝓁 ∣ 𝑘) is the probability
+and texts into a common feature space via image encoder 𝑓 (⋅, Θ𝑓 ) and                 density function of 𝑘-th component:
+text encoder 𝑔(⋅, Θ𝑔 ), where Θ𝑓 , Θ𝑔 are the parameters of the two en-
+                                                                                                         Γ(𝛾 + 𝛽) 𝛾−1
+coders. Therefore, the similarity between 𝑉𝑖 and 𝑇𝑗 could be calculated                𝑝(𝓁 ∣ 𝛾, 𝛽) =              𝓁 (1 − 𝓁)𝛽−1 ,                                              (8)
+as follows,                                                                                              Γ(𝛾)Γ(𝛽)
+
+           𝑓 (𝑉𝑖 ) ⋅ 𝑔(𝑇𝑗 )                                                            where 𝛾, 𝛽 > 0, Γ(⋅, ⋅) is the Gamma function. We use an Expectation
+𝑆𝑖,𝑗 =                        .                                             (1)
+         ‖𝑓 (𝑉𝑖 )‖‖𝑔(𝑇𝑗 )‖                                                             Maximization procedure to ﬁt the distribution. Then, the probability
+                                                                                       for 𝑖-th pair to be clean or noisy is deﬁned as:
+     The goal of our method is to design a paradigm that enforces the
+model to learn high-quality image encoder 𝑓 (⋅, Θ𝑓 ) and text encoder                                  𝑝(𝑘)𝑝(𝓁𝑖 ∣ 𝑘)
+                                                                                       𝑝(𝑘 ∣ 𝓁𝑖 ) =                  ,                                                        (9)
+𝑔(⋅, Θ𝑔 ) that are robust to the noisy correspondence, even under a high                                  𝑝(𝓁𝑖 )
+noise ratio.
+                                                                                       where 𝑘 = 0∕1 denotes clean/noisy class. Given a threshold 𝛿, we can
+                                                                                       select the clean subset as:
+3.2. Data division based on BMM
+                                                                                       𝑐 = {(𝑉𝑖 , 𝑇𝑖 , 𝑌𝑖𝑖 = 1) ∣ 𝑝(𝑘 = 0 ∣ 𝓁𝑖 ) > 𝛿, ∀(𝑉𝑖 , 𝑇𝑖 ) ∈ },                    (10)
+    To learn a robust model against noisy correspondence, we ﬁrst divide
+the dataset into a clean subset and a noisy subset as shown in Fig. 2.                 and the noisy subset as:
+Previous work has proposed the memorization eﬀect of DNNs which
+infers the phenomenon that DNNs tend to learn the meaningful patterns                  𝑛 = {(𝑉𝑖 , 𝑇𝑖 , 𝑌𝑖𝑖 = 0) ∣ 𝑝(𝑘 = 0 ∣ 𝓁𝑖 ) ≤ 𝛿, ∀(𝑉𝑖 , 𝑇𝑖 ) ∈ },                    (11)
+from clean data ﬁrst, and then gradually ﬁt the noisy data. In other
+                                                                                       where their sizes are denoted as 𝑁1 and 𝑁2 , respectively.
+words, during the early stages of training, losses are lower for clean
+data and higher for noisy data.
+    Inspired by contrastive learning, we consider the cross-modal match-               3.3. Vanilla cross-modal contrastive learning
+ing as an 𝑁-way classiﬁcation, i.e., each sample in the dataset is a cate-
+gory. The decision function from visual modality to text modality is de-                   We propose to adopt vanilla cross-modal contrastive learning on the
+                     𝑇
+ﬁned as ℎ ∶ 𝑉 ⟶ ℝ𝑁 . Similarly, the decision function from text to im-                 clean subsets, which encourages the model to pull together positive pairs
+                                  𝑉                                                    and push away negative pairs.
+age is represented as ℎ ∶ 𝑇 ⟶ ℝ𝑁 . Given a query sample 𝑉𝑖 , the cross-
+modal matching probability of the textual sample 𝑇𝑗 with respect to 𝑉𝑖                     Based on the decision functions in Eqs. (4) and (5), the purpose of
+is formulated as:                                                                      cross-modal matching is to train a model minizing the matching risk
+                                                                                       stated as follows:
+                                              exp(𝑆𝑖𝑗 ∕𝜏)
+𝑝𝑣2𝑡
+ 𝑖𝑗 = 𝑝(𝑌𝑖𝑗 = 1 ∣ 𝑉𝑖 , 𝑇𝑗 ) = ℎ(𝑉𝑖 , 𝑇𝑗 ) = ∑𝑁               ,      (2)
+                                                                                       (ℎ, ) = 𝔼(𝑉𝑖 ,𝑌𝑖⋅ )∼ [(ℎ(𝑉𝑖 , ⋅), 𝑌𝑖⋅ )]
+                                             𝑘=1 exp(𝑆𝑖𝑘 ∕𝜏)                                                                                                                (12)
+where 𝜏 is a temperature parameter. Similarly, we compute the match-                                  + 𝔼(𝑇𝑖 ,𝑌⋅𝑖 )∼ [(ℎ(𝑇𝑖 , ⋅), 𝑌⋅𝑖 )].
+ing probability of 𝑉𝑖 w.r.t 𝑇𝑗 by:
+                                                                                           Given the separated clean data 𝑐 , the risk can be approximated as:
+                                               exp(𝑆𝑗𝑖 ∕𝜏)
+𝑝𝑡2𝑣
+ 𝑖𝑗 = 𝑝(𝑌𝑗𝑖 = 1 ∣ 𝑇𝑖 , 𝑉𝑗 ) = ℎ(𝑇𝑖 , 𝑉𝑗 ) == ∑𝑁               .             (3)                        𝑁1
+                                                                                                       ∑
+                                              𝑘=1 exp(𝑆𝑘𝑖 ∕𝜏)
+                                                                                       ̂ 𝑐 (ℎ, ) ≃ 1
+                                                                                                          [(ℎ(𝑉𝑖 , ⋅), 𝑌𝑖⋅ ) + (ℎ(𝑇𝑖 , ⋅), 𝑌⋅𝑖 )].                       (13)
+                                                                                                    𝑁1 𝑖=1
+    Since computing the matching probabilities over the entire training
+set is expensive, we randomly sample a mini-batch data  with 𝑀 pairs                  where the cross-entropy is employed as the loss function . Then, in
+with index {𝑗𝑘 }𝑀𝑘=1
+                     . Then, we can estimate ℎ(⋅, ⋅) via Monte Carlo approx-           each mini-batch, the loss for the clean subset is deﬁned as:
+imation:
+                                                                                                         ⎛                          ⎞
+                  exp(𝑆𝑖𝑗 ∕𝜏)                                                                         1 ⎜ ∑             ∑
+ℎ(𝑉𝑖 , 𝑇𝑗 ) = 𝑁 ∑𝑀                 ,                                     (4)           𝑐𝑚𝑐𝑙 = −               log 𝑝 +         log 𝑝⎟                                       (14)
+                                                                                                      𝑁1 ⎜ 𝑣2𝑡                      ⎟
+              𝑀   𝑘=1 exp(𝑆𝑖𝑗𝑘 ∕𝜏)                                                                       ⎝𝑝∈𝑃+         𝑝∈𝑃+𝑡2𝑣      ⎠
+
+                 exp(𝑆𝑗𝑖 ∕𝜏)                                                           where 𝑃+𝑣2𝑡 = {𝑝𝑣2𝑡                                𝑡2𝑣    𝑡2𝑣
+                                                                                                       𝑖𝑖 ∣ 𝑌𝑖𝑖 = 1; 𝑖 = 1, … , 𝑁1 } and 𝑃+ = {𝑝𝑖𝑖 ∣ 𝑌𝑖𝑖 = 1; 𝑖 =
+ℎ(𝑇𝑖 , 𝑉𝑗 ) = 𝑁 ∑𝑀                 ,                                        (5)        1, … , 𝑁1 }.
+              𝑀  𝑘=1 exp(𝑆𝑗𝑘 𝑖 ∕𝜏)                                                         Obviously, 𝑐𝑚𝑐𝑙 is a cross-modal contrastive loss that can fully ex-
+   The goal of cross-modal matching is to learn a model that minimizes                 ploit the informative and valuable clean data to avoid the problem of
+the risk of decision function ℎ(⋅, ⋅). Thus, given the data pair (𝑉𝑖 , 𝑇𝑖 ), the       underﬁtting.
+
+                                                                                   4
+F. Zhong et al.                                                                                                                Information Fusion 130 (2026) 104156
+
+
+3.4. Complementary contrastive learning                                             Algorithm 1 Dual contrastive learning.
+                                                                                    1: Input: Training dataset , pre-trained CLIP backbone as 𝑓 (⋅, Θ𝑓 )
+    Most of the previous methods predict soft correspondence labels for                and 𝑔(⋅, Θ𝑔 ), threshold 𝛿, balancing parameters 𝜆1 , 𝜆2 , batch size 𝑀,
+both clean and noisy data pairs, and train models by minimising the                    number of batches in an epoch 𝑛𝑢𝑚_𝑠𝑡𝑒𝑝𝑠, number of max epoch
+triplet loss with soft margin. However, the triplet loss considers only                𝑒𝑝𝑜𝑐ℎ𝑠
+one pair of mismatched pairs to push each other away, which makes                   2: Output: The learned parameters Θ𝑓 , Θ𝑔
+the optimization unstable. To this end, we propose to adopt complemen-              3: for 𝑖 = 1 ∶ 𝑒𝑝𝑜𝑐ℎ𝑠 do
+tary contrastive learning with multiple mismatched pairs to improve the             4:   Initialize the encoders parameters Θ𝑓 , Θ𝑔 ;
+stability of model optimization.                                                    5: for 𝑗 = 1 ∶ 𝑛𝑢𝑚_𝑠𝑡𝑒𝑝𝑠 do
+    Inspired by complementary learning [17,46,47], the complementary                6:      Fetch a mini-batch data  with size 𝑀;
+information is introduced to improve the robustness of the model against            7:      Extract visual and textual features via 𝑓 (⋅, Θ𝑓 ) and 𝑔(⋅, Θ𝑔 );
+mismatched noisy pairs. First, we deﬁne a complementary set consisting              8:      Divide the data into clean subset 𝑐 and noisy subset 𝑛 by
+of all original negative pairs and noisy pairs as follows:                                  BMM via Eqs. (9)–(11);
+ = {(𝑛 , 𝐷), 𝑌 } = {(𝑉𝑖 , 𝑇𝑗 , 𝑌 𝑖𝑗 = 1)}.                            (15)         9:     Construct the complementary data  via Eq. (15);
+                                                                                    10:     For positive data 𝑐 , calculate the vanilla contrastive loss via
+where 𝑌 𝑖𝑗 = 1 indicates (𝑉𝑖 , 𝑇𝑗 ) is unmatched pairs, 𝑌 is the comple-                    Eq. (14);
+mentary matrix of 𝑌 in a batch of size 𝑀, and 𝐷 is the original com-                11:     For negative data , calculate the complementary contrastive
+plementary pairs in a batch . Since the mismatching probability of                         loss via Eq. (17);
+the complementary negative pairs of the selected noisy pairs is remark-             12:     Calculate the overall loss  by Eq. (18);
+ably larger than the matching probability, we keep these complementary              13:     Update the parameters Θ𝑓 , Θ𝑔 by minimizing  with backprop-
+negative pairs. Hence, even the noisy pairs are wrongly selected, it has                    agation;
+slight impact on complementary contrastive learning. Then, the size of              14: end for
+the complementary set is 𝑁 ̃ = 𝑀(𝑀 − 1) + 𝑁2 .
+                                                                                    15: end for
+    Afterward, based on the decision functions aforementioned, the
+matching risk of complementary learning on  is deﬁned as:
+                      ̃                                                                  Conceptual Captions includes about 3M image-text pairs. Since the
+               ∑𝑁
+̂ 𝑛 (ℎ, ) ≃ 1
+                  [(ℎ(𝑉𝑖 , ⋅), 𝑌 𝑖⋅ ) + (ℎ(𝑇𝑖 , ⋅), 𝑌 ⋅𝑖 )],         (16)        data are harvested from the Internet, there are about 3% ∼ 20% mis-
+             ̃ 𝑖=1
+             𝑁                                                                      matched pairs. Following [16], we use a subset of Conceptual Captions,
+                                                                                    i.e. CC120K. This subset contains 118,851 images for training, 1000 im-
+where  is a complementary loss. We adopt the negative learning loss                ages for validation, and 1000 images for testing.
+to optimize Eq. (16), which is shown to be robust to noise [17]. Then
+the optimization can be transformed to minimize the loss function as
+follows:                                                                            4.1.2. Evaluation metrics.
+                                                                                        We evaluate the cross-modal matching performance using the
+                  ̃
+           1 ∑ ∑
+                  𝑁
+                                                                                    widely-used metric Recall@K (R@K). We report R@1, R@5, R@10 and
+𝑐𝑐𝑙 = −             log (1 − 𝑝)                                        (17)        their sum (i.e. rSum) to measures the overall performance. The variance
+           ̃ 𝑖=1 𝑝∈𝑃
+           𝑁              −
+                                                                                    (var) of R@1 at diﬀerent noise ratios is also used to evaluate the stability
+where 𝑃− = 𝑃−𝑣2𝑡 ∪ 𝑃−𝑡2𝑣 , 𝑃−𝑣2𝑡 = {𝑝𝑣2𝑡                                  𝑡2𝑣
+                                     𝑖𝑗 ∣ 𝑌 𝑖𝑗 = 1; 𝑖, 𝑗 = 1, … , 𝑀} and 𝑃− =
+                                                                                    of cross-modal matching, with lower var indicating higher stability.
+{𝑝𝑡2𝑣
+  𝑖𝑗 ∣ 𝑌 𝑖𝑗 = 1; 𝑖, 𝑗 = 1, … , 𝑀}. It is noted that Eq. (17) is the instance-
+level complementary variant of negative learning loss with multiple                 4.1.3. Implementation details.
+negatives.                                                                              DCL can be used in many cross-modal matching frameworks. In this
+                                                                                    study, CLIP [4] with ViT-B/32 is used as a backbone. We initialize all
+3.5. Objective function                                                             parameters from the oﬃcial pre-trained weights. Both image and text
+                                                                                    feature dimensions are 512. All experiments are conducted on an RTX
+   Combining Eqs. (14) and (17), the overall objective function of dual             3090 GPU and AdamW [51] is used as the optimizer. The initial learning
+contrastive learning can be formulated as:                                          rate is 1e-6. We set the threshold 𝛿 to 0.5. The balance parameters of
+                                                                                    the loss function are 𝜆1 = 0.2 and 𝜆2 = 128, respectively. We train the
+ = 𝜆1 𝑐𝑚𝑐𝑙 + 𝜆2 𝑐𝑐𝑙 ,                                                (18)        model for 5 epochs with a mini-batch size of 128.
+where 𝜆1 and 𝜆2 are hyper-parameters to balance the two losses. By
+minimising the Eq. (18), the model parameters can be updated. The                   4.2. Comparison with state of the arts
+detailed training pseudo-code is shown in Algorithm 1.
+                                                                                        To demonstrate the eﬀectiveness of DCL, we compare it with a series
+4. Experiments                                                                      of robust models against noisy correspondence. The baselines include
+                                                                                    NCR [11], DECL [8], RCL [17], L2RM [52], BiCro [12], CRCL [37], PC2
+4.1. Experimental setting                                                           [39] , ReCon [40] and NPC [16]. In addition, we ﬁne-tune CLIP with
+                                                                                    ViT-B/32 as a baseline. The results are cited from the original papers
+4.1.1. Datasets and evaluation metrics.                                             and [52]. Since our method is motivated by RCL, we re-implement RCL
+   We conduct experiments on three widely-used benchmark datasets,                  with CLIP as backbone, i.e., RCL-CLIP, for fair comparison. To evaluate
+MS-COCO [48], Flickr30K [49] ans Concaptual Captions[50]:                           the performance of various methods at diﬀerent levels of noise, the noise
+   MS-COCO includes 123,287 images with 5 annotations per image.                    ratio increases from 20% to 80% at intervals 20%. Since Flickr30K and
+Following previous works [11], we use 5000 images for validation, 5000              MS-COCO are well-annotated datasets, we inject noisy correspondence
+images for testing, and 113,287 images for training.                                by randomly shuﬄing images for a speciﬁc percentage as the way in
+   Flickr30K includes 31,783 images with 5 annotations per image.                   [11,12,16].
+Following previous works [11], we use 1000 images for validation, 1000                  The results are reported in Table 1. Overall, we can observe that
+images for testing, and 29,783 images for training.                                 the proposed DCL achieves the best performance with diﬀerent levels
+
+                                                                                5
+F. Zhong et al.                                                                                                                       Information Fusion 130 (2026) 104156
+
+
+              Table 1
+              Image-text matching on MS-COCO 1K and Flickr30K.
+                                     MS-COCO 1K                                                   Flickr30K
+
+                                     image-to-text          text-to-image                         image-to-text            text-to-image
+
+                  Noise   Methods    R@1     R@5     R@10   R@1     R@5     R@10       rSum       R@1     R@5      R@10    R@1     R@5      R@10     rSum
+                  20%     NCR        76.6    95.6    98.2   60.8    88.8    95.0       515.0      73.5    93.2     96.6    56.9    82.4     88.5     491.1
+                          BiCro      76.6    95.4    98.2   61.3    88.8    94.8       515.1      74.7    94.3     96.8    56.6    81.4     88.2     492.0
+                          DECL       77.5    95.9    98.4   61.7    89.3    95.4       518.2      77.5    93.8     97.0    56.1    81.8     88.5     494.7
+                          RCL        78.9    96.0    98.4   62.8    89.9    95.4       521.4      75.9    94.5     97.3    57.9    82.6     88.6     496.8
+                          L2RM       80.2    96.3    98.5   64.2    90.1    95.4       524.7      77.9    95.2     97.8    59.8    83.6     89.5     503.8
+                          PC2        77.8    95.7    98.4   62.8    89.7    95.3       519.7      78.7    94.9     96.9    59.8    83.9     89.6     503.8
+                          CRCL       79.6    96.1    98.7   64.7    90.6    95.9       525.6      77.9    95.4     98.3    60.9    84.7     90.6     507.8
+                          ReCon      80.9    96.6    98.8   65.2    91.0    96.0       528.6      80.3    95.3     97.8    61.6    85.5     91.3     511.8
+                          CLIP       75.0    93.1    97.2   58.7    86.1    97.2       507.3      82.3    95.5     98.3    66.0    88.5     93.5     524.1
+                          RCL-CLIP   82.1    96.1    99.0   68.2    92.1    96.6       534.1      89.4    98.3     99.2    73.5    91.6     95.3     547.3
+                          NPC        79.9    95.9    98.4   66.3    90.8    98.4       529.7      87.3    97.5     98.8    72.9    92.1     95.8     544.4
+                          Ours       82.2    96.8    98.9   66.7    92.2    96.8       533.6      89.0    97.6     99.1    74.2    92.2     95.4     547.5
+                  40%     NCR        74.7    94.6    98.0   59.6    88.1    94.7       509.7      68.1    89.6     94.8    51.4    78.4     84.8     467.1
+                          BiCro      75.2    95.3    98.1   60.0    87.8    94.3       510.7      70.7    92.0     95.5    51.9    77.7     85.4     473.2
+                          DECL       75.6    95.5    98.3   59.5    88.3    94.8       512.0      72.7    92.3     95.4    53.4    79.4     86.4     479.6
+                          RCL        77.0    95.5    98.3   61.2    88.5    94.8       515.3      72.7    92.7     96.1    54.8    80.0     87.1     483.4
+                          L2RM       77.5    95.8    98.4   62.0    89.1    94.9       517.7      75.8    93.2     96.9    56.3    81.0     87.3     490.5
+                          PC2        77.4    95.8    98.4   62.1    89.4    95.1       518.2      75.8    93.5     96.9    57.5    81.9     88.2     493.8
+                          CRCL       78.2    95.7    98.3   63.3    90.3    95.7       521.5      77.8    95.2     98.0    60.0    84.0     90.2     505.2
+                          ReCon      79.9    96.2    98.6   63.5    90.5    95.9       524.5      79.4    94.3     97.6    59.9    83.9     90.1     505.2
+                          CLIP       70.7    91.7    96.2   54.7    83.4    96.2       492.9      76.2    93.3     96.5    59.4    85.0     90.9     501.3
+                          RCL-CLIP   82.1    96.4    98.6   66.9    91.1    95.8       530.9      88.8    97.9     99.1    73.1    91.5     94.8     545.2
+                          NPC        79.4    95.1    98.3   65.0    90.1    98.3       526.2      85.6    97.5     98.4    71.3    91.3     95.3     539.4
+                          Ours       82.2    96.3    99.1   67.1    91.4    96.6       532.7      89.8    97.9     99.0    74.9    92.4     95.6     549.6
+                  60%     NCR        0.1     0.3     0.4    0.1     0.5     1.0        2.4        13.9    37.7     50.5    11.0    30.1     41.4     184.6
+                          BiCro      73.2    93.9    97.6   57.5    86.3    93.4       501.9      64.1    87.1     92.7    47.2    74.0     82.3     447.4
+                          DECL       73.0    94.2    97.9   57.0    86.6    93.8       502.5      65.2    88.4     94.0    46.8    74.0     82.2     450.6
+                          RCL        74.0    94.3    97.5   57.6    86.4    93.5       503.3      67.7    89.1     93.6    48.0    74.9     83.3     456.6
+                          L2RM       75.4    94.7    97.9   59.2    87.4    93.8       508.4      70.0    90.8     95.4    51.3    76.4     83.7     467.6
+                          PC2        74.2    94.4    97.8   58.9    87.5    93.8       506.6      70.8    90.3     94.4    53.1    79.0     85.9     473.5
+                          CRCL       76.3    95.1    97.9   60.8    89.0    95.1       514.2      73.1    93.4     95.8    54.8    81.9     88.3     487.3
+                          ReCon      77.2    95.9    98.4   61.8    89.3    95.2       517.8      74.3    93.6     96.6    55.7    81.6     88.1     489.9
+                          CLIP       67.0    88.8    95.0   49.7    79.6    95.0       475.1      66.3    87.3     93.0    52.1    78.8     87.4     464.9
+                          RCL-CLIP   78.7    95.5    98.4   65.5    89.8    94.6       522.5      86.3    97.1     98.6    70.8    90.2     94.0     537.0
+                          NPC        78.2    94.4    97.7   63.1    89.0    97.7       520.1      83.0    95.9     98.6    68.1    89.6     94.2     529.4
+                          Ours       81.5    96.3    98.9   66.9    91.3    96.4       531.3      89.3    98.0     99.0    73.2    92.1     95.6     547.2
+                  80%     NCR        0.1     0.3     0.4    0.1     0.5     1.0        2.4        1.5     6.2      9.9     0.3     1.0      2.1      21.0
+                          BiCro      62.2    88.6    94.6   47.4    79.2    88.5       460.5      2.3     9.2      17.2    2.6     10.2     16.8     58.3
+                          DECL       64.8    90.5    96.0   49.7    81.7    90.3       473.0      53.4    78.8     86.9    37.6    63.8     73.9     394.4
+                          RCL        67.4    90.8    96.0   50.6    81.0    90.1       475.9      51.7    75.8     84.4    34.5    61.2     70.7     378.3
+                          L2RM       69.0    91.9    96.4   52.6    82.4    90.3       482.6      55.7    80.8     87.8    39.4    65.4     74.9     404.0
+                          CRCL       72.7    93.5    97.6   57.5    86.8    93.7       501.8      62.3    86.8     92.8    46.0    73.6     82.2     443.7
+                          CLIP       62.9    86.4    92.8   43.6    75.1    86.2       447.0      61.9    86.4     91.9    45.0    73.1     82.3     440.6
+                          RCL-CLIP   52.2    80.2    88.1   40.6    68.6    78.9       408.6      62.5    83.5     89.7    46.5    70.2     77.3     429.7
+                          NPC        73.3    92.0    97.9   58.8    86.5    94.1       502.6      80.6    95.8     97.7    63.6    86.6     91.7     516.0
+                          Ours       80.4    95.6    98.5   66.0    90.5    96.1       527.1      87.6    97.8     99.0    72.7    91.2     94.8     543.1
+
+
+
+of noise on both datasets. Notably, DCL outperforms the current state-                 ability of our method to deal with noisy correspondence under diﬀerent
+of-the-art approach NPC with a large margin of R@1 on Flickr30K with                   noise levels, especially on the high noise ratio.
+80% noise ratio. To be speciﬁc, R@1 of our DCL is 7% and 9.1% higher                       To evaluate the impact of CLIP on our method, we compare our DCL
+than NPC on image-to-text and text-to-image, respectively. Compared to                 against CLIP, RCL-CLIP, and NPC which are also CLIP-based methods.
+the similar RCL that also adopts complementary learning, our method                    Comparing the results of RCL-CLIP and the original RCL, we can con-
+signiﬁcantly outperforms it with remarkable margins, especially under                  clude that the pre-trained CLIP encoders signiﬁcantly improve the per-
+high noise ratio. This is because RCL only utilizes the complementary                  formance. However, even equipped with CLIP, RCL-CLIP is still inferior
+negative pairs and ignores the informative clean pairs leading the model               to NPC, which indicates that the negative pre-aware and re-weighting
+to be underﬁtting. In addition, the extended CRCL is also inferior to our              strategy performs better than only using complementary learning with
+method, which further indicates the eﬀectiveness of our dual contrastive               negative pairs. In contrast, our method consistently achieves the highest
+learning against noise correspondence.
+    Moreover, we can draw a conclusion that our DCL achieves stable
+and noise-resistant performance on Flickr30K and MS-COCO. Specif-                         Table 2
+                                                                                          Image-text matching on CC120K.
+ically, as the noise ratio increases from 20% to 80%, the rSums on
+Flickr30K and MS-COCO decrease by 4.4% and 6.5% respectively. On                               Methods    image-to-text            text-to-image
+the contrary, the performance of other methods decreases dramatically,                                    R@1     R@5     R@10     R@1     R@5      R@10      rSum
+e.g., the rSums of NPC decrease by 28.4% and 27.1% respectively. It is
+                                                                                               RCL*       34.2    58.0    71.2     34.2    61.2     71.7      330.5
+worth noting that the R@1 of our method with diﬀerent datasets and
+                                                                                               CLIP       68.8    87.0    92.9     67.8    86.4     90.9      493.8
+tasks keeps steady with the increasing noise. This phenomenon can be                           NPC*       71.9    90      94.6     69.3    89.1     94.2      509.1
+easily found in Fig. 1. The stable results further validate the powerful                       Ours       72.2    90.2    94.2     71.3    89.8     94.3      512.0
+
+
+                                                                                   6
+F. Zhong et al.                                                                                                                          Information Fusion 130 (2026) 104156
+
+
+                                                                                     Table 3
+                                                                                     Ablation studies on Flickr30K.
+                                                                                      Noise    Methods                 image-to-text           text-to-image
+
+                                                                                               BMM   𝑐𝑚𝑐𝑙      𝑐𝑐𝑙   R@1     R@5     R@10    R@1     R@5     R@10      rSum
+
+                                                                                      20%                              82.3    95.5    98.3    66.0    88.5    93.5      524.1
+                                                                                               ✓     ✓                 84.4    96.8    98.4    69.4    90.2    95.3      534.5
+                                                                                               ✓                ✓      88.2    97.4    99.0    74.1    91.9    95.4      546.0
+                                                                                               ✓     ✓          ✓      89.0    97.6    99.1    74.2    92.2    95.4      547.5
+                                                                                      40%                              76.2    93.3    96.5    59.4    85.0    90.9      501.3
+                                                                                               ✓     ✓                 85.6    96.7    98.4    70.0    90.1    94.6      535.4
+                                                                                               ✓                ✓      87.0    97.3    98.8    72.2    91.2    95.0      541.5
+                                                                                               ✓     ✓          ✓      89.8    97.9    99.0    74.9    92.4    95.6      549.7
+Fig. 3. Stability of diﬀerent methods with the increase of noise ratio via R@1        60%                              66.3    87.3    93.0    52.1    78.8    87.4      464.9
+                                                                                               ✓     ✓                 85.5    96.2    98.2    70.0    90.3    94.2      534.4
+of Text-to-Image on Flickr30K.
+                                                                                               ✓                ✓      82.7    97.0    98.6    69.7    88.4    92.8      529.2
+                                                                                               ✓     ✓          ✓      89.3    98.0    99.0    73.2    92.1    95.6      547.2
+                                                                                      80%                              61.9    86.4    91.9    45.0    73.1    82.3      440.6
+recall and rSum with the same backbone CLIP, and signiﬁcantly outper-                          ✓     ✓                 85.5    96.7    98.4    69.8    90.4    94.1      534.9
+forms NPC, especially for R@1 under high noise ratio. For example, our                         ✓                ✓      64.1    85.5    90.6    48.3    71.3    78.6      438.4
+DCL outperforms NPC with R@1 gains of 7.1% and 7.2% at tasks of                                ✓     ✓          ✓      87.6    97.8    99.0    72.7    91.2    94.8      543.1
+image-to-text and text-to-image on MS-COCO, respectively. The com-
+parisons demonstrate that the pre-trained CLIP can beneﬁt the cross-
+modal matching to some extent. However, the superior performance of
+our method is mainly attributed to the dual contrastive learning with                   Table 4
+both positives and negatives.                                                           Parameter analysis of 𝛿 in terms of recall and rSum scores on Flickr30K
+                                                                                        with only the vanilla contrastive loss.
+     Since many source images in CC152K are unavailable, it stops us
+from validating on this dataset due to the utilization of CLIP. Following                Threshold       image-to-text                 text-to-image
+NPC [16], we conduct experiments on CC120K. The results are shown                                        R@1        R@5       R@10     R@1     R@5      R@10          rSum
+in Table 2 (* indicates our re-implementation results in the same setting
+                                                                                         0.2             80.8       95.7      97.8     66.8    88.5     92.9          522.5
+for a fair comparison). Although NPC obtains higher R@10, our DCL
+                                                                                         0.5             85.6       96.7      98.4     70.0    90.1     94.6          535.4
+still shows overall superiority on this large-scale dataset, which further               0.8             85.2       96.9      98.5     70.9    91.1     94.8          537.4
+demonstrates the eﬀectiveness of our divide-and-conquer fashion and
+complementary learning.
+     To further evaluate the stability of various methods under diﬀerent
+noise ratios, we analyze their R@1 performance on the task of text-to-
+image on Flickr30K dataset. As illustrated in Fig. 3, the noise-rectify              threshold as a ﬁxed value. While the complementary contrastive learn-
+methods, such as NCR and BiCro, have the largest variances indicat-                  ing 𝑐𝑐𝑙 outperforms the baseline and 𝑐𝑚𝑐𝑙 with noise ratios of 20% and
+ing pronounced instability under high noise. Due to the consideration                40%. However, it is worth noting that 𝑐𝑐𝑙 degrades the performance as
+of complementary learning, RCL and CRCL can achieve satisfactory but                 the noise ratio increases. The reason is that, with the increasing of noise,
+still low performance with the increase of noise. Though NPC outper-                 the negative pairs will contain more and more wrongly mismatched
+forms RCL and CRCL, it still suﬀers from signiﬁcant performance ﬂuc-                 pairs, which bring down the performance of complementary learning.
+tuations with a relatively large variance. This is because NPC cannot                The results also indicate the signiﬁcant contribution of informative and
+fully utilize the clean and noisy data due to the limited size of memory             valuable positive pairs, which is the basic motivation of our method.
+bank. In contrast, our method combines positive and negative learning                This is also the reason that our method remarkably outperforms RCL.
+together by dual contrastive learning, it can consistently achieve higher            From the ablation study we can conclude that it is the very combination
+recalls with diﬀerent levels of noise. Combined with Fig. 1, the results             of dual constrastive learning which leverages both positive and nega-
+collectively demonstrate powerful stable and highly noise-resistant abil-            tive learning makes the stable and highly noise-resistant ability of our
+ity of our method under diﬀerent noise ratios.                                       method.
+     To provide explicit evaluation of the proposed DCL, we conduct a                    Furthermore, we analyze the parameter sensitivity of the selection
+case study on the Flickr30K dataset under 20% noise. The visualization               threshold 𝛿 on Flickr30K with a 40% noise ratio. The recalls and rSum
+results are shown in Fig. 4. Given an image query, we present the top                are plotted in Fig. 5. From the ﬁgure, we can see that when 𝛿 = 0.5,
+ﬁve most relevant textual descriptions ranked by similarity scores in                DCL achieves the best performance. In addition, we can see that the
+Fig. 4(a). Moreover, given a text query, 5 associated images are pre-                performance is not very sensitive to the parameter 𝛿. Since we propose
+sented in Fig. 4(b). The correctly matched items are highlighted with                to employ the negative data by complementary contrastive learning, it
+green boxes, while the mismatched samples are highlighted with red                   enhances the robustness of our method. Therefore, Fig. 5 shows only
+boxes for clear performance evaluation. The results reveal that our ap-              a slight ﬂuctuation. To validate this argument, we conduct an external
+proach consistently identiﬁes correct matches within the top ﬁve re-                 experiment with only the vanilla contrastive loss. The results are pre-
+trieved items.                                                                       sented in Table 4. We can observe that diﬀerent values (0.2, 0.5, 0.8) of
+                                                                                     the threshold aﬀect the performance largely (522.5, 535.4, 537.4).
+4.3. Ablation study                                                                      We also report the impacts of hyper-parameters 𝜆1 and 𝜆2 in Fig. 6.
+                                                                                     It is evident that values of 𝜆1 that are too small or too large result in
+    We further conduct ablation studies on Flickr30K with diﬀerent noise             decreased performance, with the best performance being achieved at a
+ratios to demonstrate the eﬀectiveness of three components, i.e, BMM,                value of 0.1. While the trends corresponding to 𝜆2 are relatively steady.
+𝑐𝑚𝑐𝑙 , and 𝑐𝑐𝑙 . Here, we employ CLIP as the baseline, i.e., without               This may be because 𝜆1 balances the positive contrastive learning that
+the three components. The results are reported in Table 3. As can be                 with few training pairs.
+seen, each component is important for the performance improvement.                       In our method, the overall average inference time is 60.539ms, and
+Speciﬁcally, the vanilla cross-modal contrastive learning 𝑐𝑚𝑐𝑙 keeps                the division of BMM costs 1.52ms. Though with CLIP, our method still
+steady with the increase of noise ratio. This my because we set the                  exhibits high eﬃciency.
+
+                                                                                 7
+F. Zhong et al.                                                                                                                   Information Fusion 130 (2026) 104156
+
+
+
+
+                                  Fig. 4. Visualization of a case study of the proposed method on Flickr30K with 20% noise ratio.
+
+
+                                                                                      Table 6
+                                                                                      Image-text matching on Flickr30K with SigLIP as baseline under 40% noise rate.
+                                                                                       Noise    Models    image-to-text             text-to-image
+
+                                                                                                          R@1     R@5     R@10      R@1     R@5     R@10      rSum
+
+                                                                                       0%       SigLIP    93.2    99.1    99.7      82.3    96.0    98.4      568.7
+                                                                                                Sig-DCL   93.4    98.9    99.7      81.2    95.4    97.7      566.3
+                                                                                       20%      SigLIP    92.5    98.9    99.7      78.9    94.4    97.2      561.6
+                                                                                                Sig-DCL   93.7    99.2    99.8      80.9    95.5    97.8      566.9
+                                                                                       40%      SigLIP    91.1    98.3    99.7      78.0    94.1    97.1      558.3
+                                                                                                Sig-DCL   92.7    99.1    99.8      81.2    95.6    97.7      566.1
+                                                                                       60%      SigLIP    89.4    97.9    99.2      74.6    92.4    95.9      549.4
+                                                                                                Sig-DCL   93.2    99.2    99.7      80.6    95.3    97.6      565.6
+                                                                                       80%      SigLIP    83.9    96.0    98.0      67.7    88.5    93.7      527.8
+                                                                                                Sig-DCL   91.9    98.9    99.7      80.4    95.2    97.2      563.3
+
+
+Fig. 5. Parameter analysis of 𝛿 in terms of recall and rSum scores on Flickr30K
+under 40% noise ratio.
+                                                                                      reported in Table 5. As can be seen, the overall trend with the increasing
+Table 5
+                                                                                      noise ratio is that BMM outperforms GMM. From this empirical analy-
+Impact of division models on Flickr30K.
+                                                                                      sis, it can be concluded that GMM may be appropriate for high noise
+Noise     BMM/GMM      image-to-text            text-to-image                         ratio. The reason may be because GMM directly models the continuous
+                       R@1     R@5     R@10     R@1     R@5     R@10     rSum         distribution of similarity scores. When high noise causes the score dis-
+                                                                                      tributions of correct and incorrect pairs to overlap signiﬁcantly, BMM’s
+0%        GMM          87.3    97.7    99.1     71.4    90.8    95.0     541.3
+          BMM          87.6    97.2    98.6     73.2    92.2    95.6     544.4        binary input becomes unreliable. GMM, however, can use soft proba-
+20%       GMM          87.9    97.8    98.9     73.8    92.3    95.6     546.3        bilistic assignments and the overall shape of the distributions to untan-
+          BMM          89.0    97.6    99.1     74.2    92.2    95.4     547.5        gle the mixtures, making it more robust in such ambiguous scenarios.
+40%       GMM          88.4    97.8    99.2     73.9    92.4    95.6     547.3        In addition, from the density function of BMM and GMM under 0 noise
+          BMM          89.8    97.9    99.0     74.9    92.4    95.6     549.6
+                                                                                      ratio in Fig. 7, we can observe that BMM ﬁts better than GMM.
+60%       GMM          88.5    98.3    98.9     73.9    92.1    95.4     547.1
+          BMM          89.3    98.2    98.8     73.2    92.1    95.6     547.2            Moreover, we also conduct experiments with our method by using
+80%       GMM          88.5    98.1    99.6     73.2    91.6    94.1     545.1        the most recent cross-modal alignment model SigCLIP [53] as a back-
+          BMM          87.6    97.8    99.0     72.7    91.2    94.8     543.1        bone. The results on Flickr30K dataset are reported in Table 6. Com-
+                                                                                      pared with the results in Table 1, it can be observed that our method
+                                                                                      using SigCLIP achieves higher performance than using CLIP, which in-
+5. Discussion and future work                                                         dicates the scalability of our proposed method.
+                                                                                          Since the noise ratio is unknown in practice, the threshold 𝛿 is
+   In order to evaluate the impact of division models, we compare BMM                 set as a ﬁxed value. However, under diﬀerent noise ratios, the value
+with GMM on Flickr30K across varying noise ratios. The results are                    of 𝛿 may potentially compromise the accuracy of data partitioning.
+
+                                                                                  8
+F. Zhong et al.                                                                                                               Information Fusion 130 (2026) 104156
+
+
+
+
+                          Fig. 6. Parameter analysis of 𝜆1 and 𝜆2 in terms of R@1 and rSum scores on Flickr30K under 40% noise ratio.
+
+
+                                                                                  ratios, we believe that the approaches which are more robust to lower
+                                                                                  noise ratios will be more practical.
+                                                                                      Furthermore, it is an indisputable fact that multimodal large lan-
+                                                                                  guage models (MLLMs) have great potential as backbones or prompts
+                                                                                  generation in image-text matching tasks. Only employing CLIP as a back-
+                                                                                  bone in our proposed method is far from a full exploration of MLLMs.
+
+                                                                                  6. Conclusion
+
+                                                                                      In this paper, we have proposed a dual contrastive learning paradigm
+                                                                                  to leverage both matched and mismatched data to realize positive and
+                                                                                  negative learning in cross-modal matching with noisy correspondence.
+                                                                                  Combining the positive vanilla contrastive learning and negative com-
+                                                                                  plementary contrastive learning, our method can make the best use of
+                                                                                  both positive and negative information in the dataset. This also encour-
+                                                                                  ages our method to maintain promising and stable performance with
+                                                                                  diﬀerent levels of noise ratios. Extensive experiments demonstrated the
+                                                                                  powerful stable and highly noise-resistant ability of our method. Espe-
+                                                                                  cially, our method achieves small variances of 0.67 and 0.7 on Flickr30K
+                                                                                  for image-to-text and text-to-image, respectively.
+       Fig. 7. The density function of BMM and GMM with 0 noise ratio.
+                                                                                  CRediT authorship contribution statement
+
+                                                                                      Fangming Zhong: Writing – review & editing, Visualization, Su-
+Therefore, estimating the noise ratio and determining an adaptive                 pervision, Resources, Methodology, Funding acquisition, Conceptualiza-
+threshold is our focus in the future.                                             tion; Xinyu He: Writing – original draft, Visualization, Software, Project
+     It is worth noting that the noise ratio may be lower in the real-world       administration, Data curation, Conceptualization; Haiquan Yu: Valida-
+scenario. Nevertheless, most of the existing methods, including ours,             tion, Software, Methodology, Investigation; Xiu Liu: Software, Investi-
+mainly concern the performance under high-noise scenarios. Although               gation, Conceptualization; Suhua Zhang: Writing – review & editing,
+it is valuable to study algorithms that can perform well in diﬀerent noise        Validation, Formal analysis.
+
+                                                                              9
+F. Zhong et al.                                                                                                                                        Information Fusion 130 (2026) 104156
+
+
+Data availability                                                                                  [19] C. Huang, W. Liu, J. Wang, J. Cui, J. Wen, Dual-driven cross-modal contrastive
+                                                                                                        hashing retrieval network via structural feature and semantic information, Inf. Fus.
+                                                                                                        123 (2025) 103252.
+    Data will be made available on request.                                                        [20] Y. Xiu, X. Tong, Dual-layer cross-modal alignment recommendation based on the
+                                                                                                        diﬀusion model, Inf. Fus. 125 (2026) 103472.
+                                                                                                   [21] K.H. Lee, X. Chen, G. Hua, H. Hu, X. He, Stacked cross attention for image-text
+Declaration of competing interest                                                                       matching, in: Proceedings of the European Conference on Computer Vision (ECCV),
+                                                                                                        2018, pp. 201–216.
+    The authors declare that they have no known competing ﬁnancial                                 [22] H. Diao, Y. Zhang, L. Ma, H. Lu, Similarity reasoning and ﬁltration for image-text
+                                                                                                        matching, in: Thirty-Fifth AAAI Conference on Artiﬁcial Intelligence, AAAI 2021,
+interests or personal relationships that could have appeared to inﬂuence
+                                                                                                        Virtual Event, February 2-9, 2021, 2021, pp. 1218–1226.
+the work reported in this paper.                                                                   [23] F. Faghri, D.J. Fleet, J.R. Kiros, S. Fidler, VSE++: Improving visual-semantic em-
+                                                                                                        beddings with hard negatives, in: Proceedings of the British Machine Vision Confer-
+                                                                                                        ence (BMVC), 2018.
+Acknowledgment                                                                                     [24] K. Zhang, Z. Mao, Q. Wang, Y. Zhang, Negative-aware attention framework for
+                                                                                                        image-text matching, in: Proceedings of the IEEE/CVF Conference on Computer Vi-
+    This work is supported by the National Natural Science Founda-                                      sion and Pattern Recognition, 2022, pp. 15661–15670.
+                                                                                                   [25] J. Chen, H. Hu, H. Wu, Y. Jiang, C. Wang, Learning the best pooling strategy for vi-
+tion of China (Grant No. 62476036, 62006035) and Science and Tech-                                      sual semantic embedding, in: Proceedings of the IEEE/CVF Conference on Computer
+nology Major Project on Artiﬁcial Intelligence of Liaoning Province                                     Vision and Pattern Recognition, 2021, pp. 15789–15798.
+(2023JH26/10100008).                                                                               [26] Z. Pan, F. Wu, B. Zhang, Fine-grained image-text matching by cross-modal hard
+                                                                                                        aligning network, in: Proceedings of the IEEE/CVF Conference on Computer Vision
+                                                                                                        and Pattern Recognition, 2023, pp. 19275–19284.
+References                                                                                         [27] K. Liu, Y. Gong, Y. Cao, Z. Ren, D. Peng, Y. Sun, Dual semantic fusion
+                                                                                                        hashing for multi-label cross-modal retrieval, in: Proceedings of the Thirty-
+ [1] S. Kornblith, L. Li, Z. Wang, T. Nguyen, Guiding image captioning models toward                    Third International Joint Conference on Artiﬁcial Intelligence, IJCAI-24, 2024,
+     more speciﬁc captions, in: Proceedings of the IEEE/CVF International Conference                    pp. 4569–4577.
+     on Computer Vision (ICCV), 2023, pp. 15259–15269.                                             [28] Y. Sun, K. Liu, Y. Li, Z. Ren, J. Dai, D. Peng, Distribution consistency guided hashing
+ [2] L. Li, H. Li, P. Ren, Underwater image captioning via attention mechanism based                    for cross-modal retrieval, in: Proceedings of the 32nd ACM International Conference
+     fusion of visual and textual information, Inf. Fus. 123 (2025) 103269.                             on Multimedia, MM ’24, 2024, p. 5623–5632.
+ [3] S. Li, C. Gong, Y. Zhu, C. Luo, Y. Hong, X. Lv, Context-aware multi-level question            [29] Y. Sun, Z. Ren, P. Hu, D. Peng, X. Wang, Hierarchical consensus hashing for cross-
+     embedding fusion for visual question answering, Inf. Fus. 102 (2024) 102000.                       modal retrieval, IEEE Trans. Multimedia 26 (2024) 824–836.
+ [4] A. Radford, J.W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal, G. Sastry, A. Askell,        [30] D. Zhang, Z. Hu, X.J. Wu, J. Kittler, RSPH: Robust self-paced hashing for cross-modal
+     P. Mishkin, J. Clark, G. Krueger, I. Sutskever, Learning transferable visual models                retrieval, Pattern Recogn. 171 (2026) 112072.
+     from natural language supervision, in: M. Meila, T. Zhang (Eds.), Proceedings of              [31] W. Kim, B. Son, I. Kim, ViLT: vision-and-language transformer without convolution
+     the 38Th International Conference on Machine Learning, ICML 2021, 18-24 July                       or region supervision, in: Proceedings of the 38th International Conference on Ma-
+     2021, Virtual Event, 139 of Proceedings of Machine Learning Research, PMLR, 2021,                  chine Learning, 139, 2021, pp. 5583–5594.
+     pp. 8748–8763.                                                                                [32] J. Li, D. Li, C. Xiong, S. Hoi, BLIP: Bootstrapping language-image pre-training for
+ [5] W. Qin, W. Yu, K. Zhang, H. Zhao, J. Xu, J.R. Wen, Uncertainty-aware evidential                    uniﬁed vision-language understanding and generation, in: Proceedings of the 39th
+     learning for legal case retrieval with noisy correspondence, Inf. Sci. (2025) 121915.              International Conference on Machine Learning, 162, 2022, pp. 12888–12900.
+ [6] J. Chen, R. Zhang, T. Yu, R. Sharma, Z. Xu, T. Sun, C. Chen, Label-retrieval-                 [33] Z. Feng, Z. Zeng, C. Guo, Z. Li, L. Hu, Learning from noisy correspondence with tri-
+     augmented diﬀusion models for learning from noisy labels, in: Advances in Neu-                     partition for cross-modal matching, IEEE Trans. Multimedia 26 (2024) 3884–3896.
+     ral Information Processing Systems 36: Annual Conference on Neural Information                [34] X. Ma, M. Yang, Y. Li, P. Hu, J. Lv, X. Peng, Cross-modal retrieval with noisy cor-
+     Processing Systems 2023, NeurIPS 2023, New Orleans, LA, USA, December 10-16,                       respondence via consistency reﬁning and mining, IEEE Trans. Image Process. 33
+     2023, 2023.                                                                                        (2024) 2587–2598.
+ [7] Y. Li, H. Han, S. Shan, X. Chen, DISC: Learning from noisy labels via dynamic                 [35] H. Han, K. Miao, Q. Zheng, M. Luo, Noisy correspondence learning with meta sim-
+     instance-speciﬁc selection and correction, in: Proceedings of the IEEE/CVF Confer-                 ilarity correction, in: Proceedings of the IEEE/CVF Conference on Computer Vision
+     ence on Computer Vision and Pattern Recognition (CVPR), 2023, pp. 24070–24079.                     and Pattern Recognition (CVPR), 2023, pp. 7517–7526.
+ [8] Y. Qin, D. Peng, X. Peng, X. Wang, P. Hu, Deep evidential learning with noisy corre-          [36] Q. Zha, X. Liu, Y. Cheung, S. Peng, X. Xu, N. Wang, UCPM: uncertainty-guided
+     spondence for cross-modal retrieval, in: Proceedings of the 30th ACM International                 cross-modal retrieval with partially mismatched pairs, IEEE Trans. Image Process.
+     Conference on Multimedia, MM ’22, 2022, p. 4948–4956. https://doi.org/10.1145/                     34 (2025) 3622–3634.
+     3503161.3547922                                                                               [37] Y. Qin, Y. Sun, D. Peng, J.T. Zhou, X. Peng, P. Hu, Cross-modal active complemen-
+ [9] Y. Qin, L. Huang, D. Peng, B. Jiang, J.T. Zhou, X. Peng, P. Hu, Trustworthy visual-                tary learning with self-reﬁning correspondence, in: Advances in Neural Information
+     textual retrieval, IEEE Trans. Image Process. 34 (2025) 4515–4526.                                 Processing Systems 36: Annual Conference on Neural Information Processing Sys-
+[10] Y. Sun, Y. Qin, Y. Li, D. Peng, X. Peng, P. Hu, Robust multi-view clustering with                  tems 2023, NeurIPS 2023, New Orleans, LA, USA, December 10-16, 2023, 2023.
+     noisy correspondence, IEEE Trans. Knowl. Data Eng. 36 (12) (2024) 9150–9162.                  [38] F. Liu, C. Dong, C. Zhang, H. Zhou, J. Zhou, Robust noisy correspondence learning
+[11] Z. Huang, G. Niu, X. Liu, W. Ding, X. Xiao, H. Wu, X. Peng, Learning with noisy                    via self-drop and dual-weight, CoRR abs/2412.06172 (2024) 1–12.
+     correspondence for cross-modal matching, in: Advances in Neural Information Pro-              [39] Y. Duan, Z. Gu, Z. Ying, L. Qi, C. Meng, Y. Shi, PC2 : pseudo-classiﬁcation based
+     cessing Systems 34: Annual Conference on Neural Information Processing Systems                     pseudo-captioning for noisy correspondence learning in cross-modal retrieval, in:
+     2021, NeurIPS 2021, December 6-14, 2021, Virtual, 2021, pp. 29406–29419.                           Proceedings of the 32nd ACM International Conference on Multimedia, MM 2024,
+[12] S. Yang, Z. Xu, K. Wang, Y. You, H. Yao, T. Liu, M. Xu, BiCro: noisy correspondence                Melbourne, VIC, Australia, 28 October 2024 - 1 November 2024, ACM, 2024,
+     rectiﬁcation for multi-modality data via bi-directional cross-modal similarity consis-             pp. 9397–9406.
+     tency, in: 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition                [40] Q. Zha, X. Liu, S.J. Peng, Y.m. Cheung, X. Xu, N. Wang, Recon: enhancing true
+     (CVPR), 2023, pp. 19883–19892.                                                                     correspondence discrimination through relation consistency for robust noisy cor-
+[13] Z. Zhao, M. Chen, T. Dai, J. Yao, B. Han, Y. Zhang, Y. Wang, Mitigating noisy corre-               respondence learning, in: IEEE/CVF Conference on Computer Vision and Pattern
+     spondence by geometrical structure consistency learning, in: IEEE/CVF Conference                   Recognition, CVPR 2025, 2025.
+     on Computer Vision and Pattern Recognition, CVPR 2024, Seattle, WA, USA, June                 [41] S. Ge, S. Mishra, C.L. Li, H. Wang, D. Jacobs, Robust contrastive learning using
+     16-22, 2024, IEEE, 2024, pp. 27371–27380.                                                          negative samples with diminished semantics, in: Advances in Neural Information
+[14] Y. Yang, L. Wang, E. Yang, C. Deng, Robust noisy correspondence learning with                      Processing Systems, 34, 2021, pp. 27356–27368.
+     equivariant similarity consistency, in: IEEE/CVF Conference on Computer Vision                [42] R. Lin, H. Hu, Multimodal contrastive learning via uni-modal coding and cross-
+     and Pattern Recognition, CVPR 2024, Seattle, WA, USA, June 16-22, 2024, 2024,                      modal prediction for multimodal sentiment analysis, in: Findings of the Association
+     pp. 17700–17709.                                                                                   for Computational Linguistics: EMNLP 2022, 2022, pp. 511–523.
+[15] Z. Dang, M. Luo, C. Jia, G. Dai, X. Chang, J. Wang, Noisy correspondence learning             [43] X. Guo, A. Kot, A.W.K. Kong, Pace-adaptive and noise-resistant contrastive learning
+     with self-reinforcing errors mitigation, in: Thirty-Eighth AAAI Conference on Ar-                  for multimodal feature fusion, IEEE Trans. Multimedia 25 (2023) 9437–9448.
+     tiﬁcial Intelligence, AAAI 2024, February 20-27, 2024, Vancouver, Canada, 2024,               [44] R. Lin, H. Hu, Adapt and explore: multimodal mixup for representation learning,
+     pp. 1463–1471.                                                                                     Inf. Fus. 105 (2024) 102216.
+[16] X. Zhang, H. Li, M. Ye, Negative pre-aware for noisy cross-modal matching, in:                [45] H. Han, Q. Zheng, M. Luo, K. Miao, F. Tian, Y. Chen, Noise-tolerant learn-
+     Thirty-Eighth AAAI Conference on Artiﬁcial Intelligence, AAAI 2024, February 20-                   ing for audio-visual action recognition, IEEE Trans. Multimedia 26 (2024)
+     27, 2024, Vancouver, Canada, 2024, pp. 7341–7349.                                                  7761–7774.
+[17] P. Hu, Z. Huang, D. Peng, X. Wang, X. Peng, Cross-modal retrieval with partially              [46] L. Feng, T. Kaneko, B. Han, G. Niu, B. An, M. Sugiyama, Learning with multiple
+     mismatched pairs, IEEE Trans. Pattern Anal. Mach. Intell. 45 (8) (2023) 9595–9610.                 complementary labels, in: International Conference on Machine Learning, PMLR,
+     https://doi.org/10.1109/TPAMI.2023.3247939                                                         2020, pp. 3072–3081.
+[18] Z. Luo, P. Zhao, C. Xu, X. Geng, T. Shen, C. Tao, J. Ma, Q. Lin, D. Jiang, LexLIP:            [47] T. Ishida, G. Niu, W. Hu, M. Sugiyama, Learning from complementary labels, in: Ad-
+     Lexicon-Bottlenecked language-image pre-training for large-scale image-text sparse                 vances in Neural Information Processing Systems 30: Annual Conference on Neural
+     retrieval, in: 2023 IEEE/CVF International Conference on Computer Vision (ICCV),                   Information Processing Systems 2017, December 4-9, 2017, Long Beach, CA, USA,
+     2023.                                                                                              2017, pp. 5639–5649.
+
+
+                                                                                              10
+F. Zhong et al.                                                                                                                                     Information Fusion 130 (2026) 104156
+
+
+[48] T.Y. Lin, M. Maire, S. Belongie, J. Hays, P. Perona, D. Ramanan, P. Dollár, C.L.           [51] I. Loshchilov, F. Hutter, Decoupled weight decay regularization, in: 7th International
+     Zitnick, Microsoft COCO: common objects in context, in: Proceedings of (ECCV)                   Conference on Learning Representations, ICLR 2019, New Orleans, LA, USA, May
+     European Conference on Computer Vision, 2014, pp. 740–755.                                      6-9, 2019, 2019.
+[49] P. Young, A. Lai, M. Hodosh, J. Hockenmaier, From image descriptions to visual             [52] H. Han, Q. Zheng, G. Dai, M. Luo, J. Wang, Learning to rematch mismatched pairs
+     denotations: new similarity metrics for semantic inference over event descriptions,             for robust cross-modal retrieval, in: IEEE/CVF Conference on Computer Vision and
+     Trans. Assoc. Comput. Linguist. 2 (2014) 67–78.                                                 Pattern Recognition, CVPR 2024, Seattle, WA, USA, June 16-22, 2024, 2024, pp.
+[50] P. Sharma, N. Ding, S. Goodman, R. Soricut, Conceptual captions: a cleaned, hy-                 26669–26678.
+     pernymed, image alt-text dataset for automatic image captioning, in: Proceed-              [53] X. Zhai, B. Mustafa, A. Kolesnikov, L. Beyer, Sigmoid loss for language
+     ings of the 56th Annual Meeting of the Association for Computational Linguistics,               image pre-training, in: IEEE/CVF International Conference on Computer
+     ACL 2018, Melbourne, Australia, July 15-20, 2018, Volume 1: Long Papers, 2018,                  Vision, ICCV 2023, Paris, France, October 1-6, 2023, IEEE, 2023, pp.
+     pp. 2556–2565.                                                                                  11941–11952.
+
+
+
+
+                                                                                           11
+

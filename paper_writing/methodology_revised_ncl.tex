@@ -1,0 +1,282 @@
+\section{Methodology}
+This section describes the proposed Fine-Grained Token Rectification (FGTR) framework for cross-modal retrieval with noisy correspondence. Following the common setting in noisy correspondence learning, the observed training set contains image--text pairs whose diagonal correspondence labels may be corrupted. FGTR first divides the training data into clean and noisy subsets according to the memorization effect of deep neural networks. Clean pairs are used for vanilla cross-modal contrastive learning and to maintain a clean prototype memory. For noisy pairs, FGTR rectifies the unreliable textual supervision by retrieving a clean prototype caption and further calibrating its token-level contribution with respect to the query image.
+
+The overall pipeline contains four tightly coupled steps. First, a loss-based data division module estimates the posterior clean probability of each observed pair. Second, high-confidence clean pairs are stored in a dynamic prototype memory, which provides reliable textual candidates for later correction. Third, each noisy image retrieves a globally plausible prototype caption from the memory. Finally, the retrieved prototype is not used as a rigid sentence-level label; instead, FGTR performs fine-grained token rectification to emphasize visually grounded tokens and suppress locally unsupported semantics.
+
+\subsection{Problem Formulation}
+Let $\mathcal{D}=\{(I_i,T_i)\}_{i=1}^{N}$ denote an image--text training set with $N$ observed pairs. In standard cross-modal matching, the diagonal pair $(I_i,T_i)$ is regarded as a positive pair, while $(I_i,T_j)$ with $i\neq j$ is treated as a negative pair. This assumption can be represented by an observed correspondence matrix $\widetilde{\mathbf{Y}}\in\{0,1\}^{N\times N}$, where $\widetilde{Y}_{ii}=1$ and $\widetilde{Y}_{ij}=0$ for $i\neq j$. However, under noisy correspondence, some diagonal pairs are wrongly matched, meaning that $\widetilde{Y}_{ii}=1$ may be inconsistent with the unknown true correspondence.
+
+The goal is to learn robust image and text encoders, denoted by $f_{\theta}(\cdot)$ and $g_{\phi}(\cdot)$, from the corrupted correspondence matrix $\widetilde{\mathbf{Y}}$. Existing noisy correspondence learning methods mainly correct, relabel, or reweight the pair-level correspondence label. In contrast, FGTR aims to rectify noisy supervision at a finer granularity: after obtaining a globally plausible textual prototype for a noisy image, it estimates which tokens in the prototype are visually supported and suppresses unsupported local semantics. This design is especially suitable for partial correspondence noise, where a sentence can be globally related to the image but still contain wrong objects, attributes, or actions.
+
+\subsection{Feature Encoding and Visual Context}
+We employ CLIP~\cite{clip} as the backbone for feature extraction. Given an image $I_i$, the image encoder produces a global visual embedding and patch-level embeddings:
+\begin{equation}
+    \mathbf{V}_i=
+    \{\boldsymbol{v}_{i}^{\mathrm{cls}},\boldsymbol{v}_{i,1},\ldots,\boldsymbol{v}_{i,L}\}
+    \in\mathbb{R}^{(L+1)\times d},
+\end{equation}
+where $\boldsymbol{v}_{i}^{\mathrm{cls}}$ is the global image embedding and $\boldsymbol{v}_{i,k}$ is the $k$-th patch embedding. Given a caption $T_i$, the text encoder outputs contextual token embeddings
+\begin{equation}
+    \mathbf{T}_i=
+    \{\boldsymbol{t}_{i,1},\boldsymbol{t}_{i,2},\ldots,\boldsymbol{t}_{i,M}\}
+    \in\mathbb{R}^{M\times d},
+\end{equation}
+where the \texttt{[EOS]} embedding is used as the sentence-level textual embedding $\boldsymbol{t}_{i}^{\mathrm{eos}}$. All embeddings used in similarity computation are $\ell_2$-normalized.
+
+For token-level rectification, we construct a visual context from the image patches. To reduce the effect of redundant background regions, we optionally select salient patches according to a hybrid score. The relevance of the $k$-th patch to the global image embedding is
+\begin{equation}
+    a_{i,k}=(\boldsymbol{v}_{i,k})^{\top}\boldsymbol{v}_{i}^{\mathrm{cls}}.
+\end{equation}
+We also compute a distinctiveness score
+\begin{equation}
+    r_{i,k}=-(\boldsymbol{v}_{i,k})^{\top}\bar{\boldsymbol{v}}_{i},
+    \qquad
+    \bar{\boldsymbol{v}}_{i}=\frac{1}{L}\sum_{k=1}^{L}\boldsymbol{v}_{i,k}.
+\end{equation}
+After min--max normalization within the image, the saliency score is
+\begin{equation}
+    s_{i,k}=\operatorname{Norm}_{k}(a_{i,k})+\operatorname{Norm}_{k}(r_{i,k}).
+\end{equation}
+The top-$\rho$ ratio of patches are retained as $\widetilde{\mathbf{V}}_i$. The visual context for token calibration is
+\begin{equation}
+    \mathbf{U}_i=[\boldsymbol{v}_{i}^{\mathrm{cls}};\widetilde{\mathbf{V}}_i]
+    =\{\boldsymbol{u}_{i,1},\ldots,\boldsymbol{u}_{i,L'+1}\}.
+\end{equation}
+When patch selection is disabled, $\widetilde{\mathbf{V}}_i$ contains all patch embeddings.
+
+\subsection{Data Division by Loss Modeling}
+Following the memorization effect, deep networks tend to learn clean correspondences earlier than noisy ones. Therefore, clean pairs usually have smaller matching losses than mismatched pairs during training. FGTR exploits this small-loss hypothesis to divide the training set into a clean subset and a noisy subset. The division is refreshed during training, so that the clean/noisy partition can follow the evolving cross-modal representation space instead of being fixed by an early model.
+
+For a mini-batch of size $B$, the similarity between image $I_i$ and caption $T_j$ is
+\begin{equation}
+    S_{ij}=(\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{t}_{j}^{\mathrm{eos}}.
+\end{equation}
+The image-to-text and text-to-image matching probabilities are
+\begin{equation}
+    p_{ij}^{i2t}=
+    \frac{\exp(S_{ij}/\tau)}
+    {\sum_{k=1}^{B}\exp(S_{ik}/\tau)},
+    \qquad
+    p_{ij}^{t2i}=
+    \frac{\exp(S_{ji}/\tau)}
+    {\sum_{k=1}^{B}\exp(S_{ki}/\tau)}.
+\end{equation}
+The per-sample decision loss of the observed positive pair is
+\begin{equation}
+    \ell_i
+    =
+    -\frac{1}{2}
+    \left(
+    \log p_{ii}^{i2t}+\log p_{ii}^{t2i}
+    \right).
+\end{equation}
+
+We fit the distribution of $\{\ell_i\}_{i=1}^{N}$ using a two-component Gaussian Mixture Model:
+\begin{equation}
+    p(\ell)=\sum_{k=1}^{2}\varpi_k\mathcal{N}(\ell\mid\mu_k,\sigma_k^2),
+\end{equation}
+where $\varpi_k$, $\mu_k$, and $\sigma_k$ denote the mixture coefficient, mean, and variance of the $k$-th component. The component with the smaller mean is regarded as the clean component, since clean pairs are expected to have lower losses. The posterior clean probability is
+\begin{equation}
+    q_i=P(k_{\mathrm{clean}}\mid \ell_i).
+\end{equation}
+Given a threshold $\delta$, we obtain the predicted correspondence label
+\begin{equation}
+    \hat{y}_i=\mathbb{I}(q_i>\delta).
+\end{equation}
+The clean and noisy subsets are then defined as
+\begin{equation}
+\mathcal{D}_{\mathrm{clean}}=
+\{(I_i,T_i)\mid \hat{y}_i=1\},
+\qquad
+\mathcal{D}_{\mathrm{noisy}}=
+\{(I_i,T_i)\mid \hat{y}_i=0\}.
+\end{equation}
+In practice, we use $\delta_{\mathrm{init}}$ for the initial full-dataset loss estimation and $\delta_{\mathrm{bank}}$ for subsequent divisions based on the maintained per-sample loss bank. Specifically, after each mini-batch update, the latest decision loss of the corresponding training samples is written into the loss bank. At the beginning of the next epoch, GMM fitting is performed on this bank to obtain an epoch-level clean/noisy split. This avoids making the division from a single mini-batch and provides a more stable estimate of sample reliability.
+
+\subsection{Global Prototype Rectification}
+For pairs in $\mathcal{D}_{\mathrm{noisy}}$, the observed diagonal correspondence is deemed unreliable. Directly optimizing these pairs as positives may reinforce false image--text associations. FGTR therefore performs global prototype rectification: instead of using the noisy caption $T_i$, it retrieves a clean textual prototype from a memory bank built from high-confidence clean pairs.
+
+\noindent\textbf{Clean Prototype Memory.}
+We maintain a FIFO memory bank $\mathcal{M}$:
+\begin{equation}
+    \mathcal{M}=
+    \{(\boldsymbol{m}^{v}_{r}, C^{\mathcal{M}}_{r})\}_{r=1}^{|\mathcal{M}|},
+\end{equation}
+where $\boldsymbol{m}^{v}_{r}$ is a detached image embedding and $C^{\mathcal{M}}_{r}$ is the corresponding caption token sequence. The memory is implemented as a FIFO queue, so stale representations from early epochs are gradually replaced by recent clean samples. All stored image embeddings are detached from the computation graph, and the memory is used only as a retrieval pool rather than an additional trainable module. To reduce the risk of introducing borderline noisy pairs, we further apply a simple confidence filtering strategy. At epoch $e$, the average clean confidence is
+\begin{equation}
+    \eta_e=
+    \frac{1}{|\mathcal{D}_{\mathrm{clean}}|}
+    \sum_{i:\hat{y}_i=1}q_i.
+\end{equation}
+Only clean samples with $q_i>\eta_e+\xi$ are enqueued, where $\xi$ is a margin. This step only improves the purity of the prototype pool and is not treated as the main contribution. When the memory contains too few candidates, prototype rectification is disabled and noisy samples are temporarily excluded from optimization, preventing unstable correction from an immature memory.
+
+\noindent\textbf{Prototype Retrieval.}
+For a noisy image $I_i$, we adopt a two-stage retrieval strategy. We first retrieve top-$K$ visual neighbors from $\mathcal{M}$ using image-image similarity:
+\begin{equation}
+    \mathcal{N}_i=
+    \operatorname{TopK}_{K}
+    \left(
+    \{(\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{m}^{v}_{r}\}_{r=1}^{|\mathcal{M}|}
+    \right).
+\end{equation}
+The paired captions of these visual neighbors form the prototype candidate set
+\begin{equation}
+    \mathcal{P}_i=\{C^{\mathcal{M}}_{r}\mid r\in\mathcal{N}_i\}.
+\end{equation}
+The first stage constrains the candidates to clean captions attached to visually similar images. We then perform a second-stage reranking by selecting the candidate with the highest image-text compatibility to the query image:
+\begin{equation}
+    C_i^{\star}
+    =
+    \arg\max_{C\in\mathcal{P}_i}
+    (\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}
+    \boldsymbol{t}^{\mathrm{eos}}(C).
+\end{equation}
+The selected caption $C_i^{\star}$ serves as a global rectification target for the noisy pair. Importantly, $C_i^{\star}$ is treated as a coarse semantic anchor rather than an absolutely correct caption, because visually similar images can still differ in local objects, attributes, and relations.
+
+\noindent\textbf{Prototype Confidence.}
+Although $C_i^{\star}$ is retrieved from clean candidates, it may still be imperfect. We therefore assign a soft confidence to the rectified pair. Let $c_{i,k}$ be the compatibility between the query image and the $k$-th prototype candidate. We compute
+\begin{equation}
+    \alpha_{i,k}=
+    \frac{\exp(c_{i,k}/\tau_c)}
+    {\sum_{j=1}^{K}\exp(c_{i,j}/\tau_c)}.
+\end{equation}
+The normalized entropy of the candidate distribution is
+\begin{equation}
+    H_i=
+    \frac{-\sum_{k=1}^{K}\alpha_{i,k}\log(\alpha_{i,k}+\epsilon)}
+    {\log K}.
+\end{equation}
+A lower entropy indicates that the model selects a prototype more decisively. Combining this uncertainty with the retrieved visual-neighbor similarity $\bar{s}_i$, the confidence weight is
+\begin{equation}
+    \omega_i=
+    \operatorname{clip}
+    \left(
+    w_{\min}+(w_{\max}-w_{\min})(1-H_i)\bar{s}_i,
+    w_{\min},w_{\max}
+    \right).
+\end{equation}
+This weight controls the contribution of the rectified noisy pair in the final contrastive objective. Thus, prototype retrieval provides both a corrected textual source and a sample-level confidence prior. If the memory bank is not sufficiently populated, noisy samples are temporarily assigned zero weight.
+
+\subsection{Fine-Grained Token Rectification}
+Caption-level prototype retrieval provides a coarse correction, but it still follows an instance-level or sentence-level rectification paradigm. The retrieved caption can be globally relevant yet locally inconsistent with the query image. FGTR addresses this residual token-level noise by calibrating the prototype representation according to visual evidence. This module is the key distinction of FGTR: it does not assume that all tokens in the retrieved prototype are equally reliable.
+
+For a noisy sample, the selected prototype $C_i^{\star}$ is encoded as
+\begin{equation}
+    \mathbf{T}(C_i^{\star})=
+    \{\boldsymbol{t}_{i,1}^{\star},\ldots,\boldsymbol{t}_{i,M}^{\star}\}.
+\end{equation}
+Let $\Omega_i$ denote the valid token set after removing special tokens such as \texttt{[SOS]}, \texttt{[EOS]}, \texttt{[PAD]}, and \texttt{[MASK]}.
+
+\noindent\textbf{Token-level Visual Support.}
+For each token $m\in\Omega_i$, we measure its visual grounding strength by matching it to the visual context of the query image:
+\begin{equation}
+    \phi_{i,m}
+    =
+    \max_{1\leq k\leq L'+1}
+    \operatorname{sg}(\boldsymbol{t}_{i,m}^{\star})^{\top}
+    \operatorname{sg}(\boldsymbol{u}_{i,k}),
+\end{equation}
+where $\operatorname{sg}(\cdot)$ denotes the stop-gradient operation. The support score is estimated without back-propagating through the reliability computation, so the token weights act as adaptive calibration signals rather than extra optimization targets.
+The support scores are normalized within the valid token set:
+\begin{equation}
+    \rho_{i,m}=
+    \operatorname{Norm}_{m\in\Omega_i}(\phi_{i,m}),
+    \qquad
+    \rho_{i,m}\in[0,1].
+\end{equation}
+Tokens with higher $\rho_{i,m}$ are better supported by the query image, while low-support tokens are more likely to describe absent or mismatched semantics.
+
+\noindent\textbf{Reliability-aware Token Aggregation.}
+We directly use the normalized visual support as the token aggregation weight:
+\begin{equation}
+    g_{i,m}=\rho_{i,m},
+    \qquad m\in\Omega_i,
+\end{equation}
+and invalid special tokens are assigned zero weight. In this way, visually grounded tokens contribute more to the textual representation, while unsupported tokens are softly suppressed by smaller aggregation weights. The calibrated token-level representation is
+\begin{equation}
+    \bar{\boldsymbol{t}}_i
+    =
+    \operatorname{Normalize}
+    \left(
+    \frac{\sum_{m\in\Omega_i}g_{i,m}\boldsymbol{t}_{i,m}^{\star}}
+    {\sum_{m\in\Omega_i}g_{i,m}+\epsilon}
+    \right).
+\end{equation}
+Finally, we fuse the sentence-level prototype representation with the calibrated token representation:
+\begin{equation}
+    \widehat{\boldsymbol{t}}_i
+    =
+    \operatorname{Normalize}
+    \left(
+    \lambda\boldsymbol{t}^{\mathrm{eos}}(C_i^{\star})
+    +(1-\lambda)\bar{\boldsymbol{t}}_i
+    \right).
+\end{equation}
+The resulting $\widehat{\boldsymbol{t}}_i$ is used as the rectified textual representation of the noisy sample. Unlike caption generation or hard token removal, this feature-level rectification softly reduces unsupported semantics while preserving visually grounded words. It also avoids introducing external language models, keeping the correction process within the original cross-modal embedding space.
+
+\subsection{Training Objective}
+FGTR optimizes clean and rectified noisy samples in a unified contrastive objective. For clean pairs, the original sentence representation is used:
+\begin{equation}
+    \boldsymbol{z}_i=\boldsymbol{t}_{i}^{\mathrm{eos}},
+    \qquad (I_i,T_i)\in\mathcal{D}_{\mathrm{clean}}.
+\end{equation}
+For noisy pairs with a valid retrieved prototype, the calibrated representation is used:
+\begin{equation}
+    \boldsymbol{z}_i=\widehat{\boldsymbol{t}}_i,
+    \qquad (I_i,T_i)\in\mathcal{D}_{\mathrm{noisy}}.
+\end{equation}
+The prototype-based sample prior is defined as
+\begin{equation}
+    \pi_i=
+    \begin{cases}
+    1, & (I_i,T_i)\in\mathcal{D}_{\mathrm{clean}},\\
+    \omega_i, & (I_i,T_i)\in\mathcal{D}_{\mathrm{noisy}}\ \text{with a valid prototype},\\
+    0, & \text{otherwise}.
+    \end{cases}
+\end{equation}
+In addition to the prototype prior, we maintain an online matching confidence for each training sample. For the current mini-batch, the instantaneous confidence is computed from the diagonal matching probabilities:
+\begin{equation}
+    \widetilde{w}_i
+    =
+    \frac{1}{2}
+    \left(
+    p_{ii}^{i2t}+p_{ii}^{t2i}
+    \right).
+\end{equation}
+To reduce batch-level fluctuation, the historical confidence is updated by exponential moving average:
+\begin{equation}
+    w_i^{(e)}
+    =
+    \mu w_i^{(e-1)}
+    +(1-\mu)\widetilde{w}_i,
+\end{equation}
+where $\mu$ is the momentum coefficient. The final training weight is the product of the online matching confidence and the prototype prior, i.e., $\psi_i=w_i\pi_i$.
+
+The weighted bidirectional contrastive loss is
+\begin{equation}
+    \mathcal{L}
+    =
+    \frac{1}{\sum_{i=1}^{B}\psi_i+\epsilon}
+    \sum_{i=1}^{B}
+    \psi_i\cdot
+    \frac{\mathcal{L}_{i}^{i2t}+\mathcal{L}_{i}^{t2i}}{2},
+\end{equation}
+where
+\begin{equation}
+    \mathcal{L}_{i}^{i2t}
+    =
+    -\log
+    \frac{\exp((\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{z}_i/\tau)}
+    {\sum_{j=1}^{B}\exp((\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{z}_j/\tau)},
+\end{equation}
+\begin{equation}
+    \mathcal{L}_{i}^{t2i}
+    =
+    -\log
+    \frac{\exp(\boldsymbol{z}_i^{\top}\boldsymbol{v}_{i}^{\mathrm{cls}}/\tau)}
+    {\sum_{j=1}^{B}\exp(\boldsymbol{z}_i^{\top}\boldsymbol{v}_{j}^{\mathrm{cls}}/\tau)}.
+\end{equation}
+Thus, clean pairs provide reliable positive supervision, while rectified noisy pairs contribute according to both their prototype confidence and their current cross-modal matching confidence.
+
+\subsection{Training Procedure}
+Training proceeds in two phases. In the warm-up phase, the model estimates sample reliability from the observed pairs and optimizes mainly with samples predicted as clean. Noisy samples are suppressed to avoid early confirmation bias, while high-confidence clean samples are gradually enqueued to initialize the prototype memory. In the joint rectification phase, the data division is refreshed at the beginning of each epoch according to the updated loss bank. Clean pairs are used for vanilla cross-modal contrastive learning and memory update. Noisy pairs are first corrected by global prototype retrieval; if a valid prototype is available, FGTR performs token-level rectification with respect to the query image and optimizes the rectified pair with the confidence-weighted contrastive loss. This training procedure allows the model to exploit useful noisy samples only when reliable global and local correction signals are available.

@@ -1,0 +1,265 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="980" viewBox="0 0 2200 980">
+  <defs>
+    <style>
+      .page{fill:#fffdfd}
+      .h1{font:700 35px "Times New Roman",Times,serif;fill:#111}
+      .h2{font:700 27px "Times New Roman",Times,serif;fill:#111}
+      .h3{font:700 22px "Times New Roman",Times,serif;fill:#111}
+      .lab{font:700 18px "Times New Roman",Times,serif;fill:#111}
+      .txt{font:500 16px "Times New Roman",Times,serif;fill:#222}
+      .tiny{font:500 13px "Times New Roman",Times,serif;fill:#333}
+      .math{font:italic 600 17px "Times New Roman",Times,serif;fill:#111}
+      .outer{fill:#fffefe;stroke:#dc2b2b;stroke-width:3;rx:24}
+      .dash{fill:#fff;stroke:#8b8b8b;stroke-width:2.4;stroke-dasharray:12 9;rx:18}
+      .pinkdash{fill:#fff8fc;stroke:#f0a0cb;stroke-width:2.3;stroke-dasharray:10 8;rx:18}
+      .bluedash{fill:#f5fdff;stroke:#69c7de;stroke-width:2.3;stroke-dasharray:10 8;rx:18}
+      .purpledash{fill:#fbf8ff;stroke:#b08be3;stroke-width:2.3;stroke-dasharray:10 8;rx:18}
+      .box{fill:#fff;stroke:#111;stroke-width:2.2;rx:10}
+      .blue{fill:#dbeaff;stroke:#5d89cf;stroke-width:2.3;rx:12}
+      .cyan{fill:#d9f8f8;stroke:#4ca9aa;stroke-width:2.3;rx:12}
+      .green{fill:#dff2d3;stroke:#6c9f4d;stroke-width:2.3;rx:12}
+      .yellow{fill:#fff0a8;stroke:#b28a18;stroke-width:2.3;rx:12}
+      .pink{fill:#ffe1ef;stroke:#ee77a8;stroke-width:2.3;rx:12}
+      .orange{fill:#ffe2c4;stroke:#d07b2d;stroke-width:2.3;rx:12}
+      .red{fill:#ffe3e1;stroke:#d44a45;stroke-width:2.3;rx:12}
+      .soft{fill:#fff;stroke:#aaa;stroke-width:2;rx:10}
+      .arrow{fill:none;stroke:#111;stroke-width:3;marker-end:url(#arr)}
+      .arrow2{fill:none;stroke:#666;stroke-width:2.5;marker-end:url(#arrg)}
+      .arrowR{fill:none;stroke:#dc2b2b;stroke-width:3;marker-end:url(#arrr)}
+      .arrowB{fill:none;stroke:#267bb8;stroke-width:3;marker-end:url(#arrb)}
+      .arrowG{fill:none;stroke:#2f8b59;stroke-width:3;marker-end:url(#arrgreen)}
+      .dashed{stroke-dasharray:8 7}
+      .tokB{fill:#ccefff;stroke:#13a4dc;stroke-width:2;rx:6}
+      .tokP{fill:#ffd8e8;stroke:#ec76a6;stroke-width:2;rx:6}
+      .tokY{fill:#fff0a8;stroke:#b28a18;stroke-width:2;rx:6}
+      .tokG{fill:#dff2d3;stroke:#6c9f4d;stroke-width:2;rx:6}
+      .nO{fill:#ffd1a6;stroke:#c56b2d;stroke-width:2}
+      .nB{fill:#bfd1ff;stroke:#5579c7;stroke-width:2}
+      .nG{fill:#c9edbd;stroke:#4b934d;stroke-width:2}
+      .nR{fill:#ffb4b4;stroke:#d13a37;stroke-width:2}
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#111"/></marker>
+    <marker id="arrg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#666"/></marker>
+    <marker id="arrr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#dc2b2b"/></marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#267bb8"/></marker>
+    <marker id="arrgreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#2f8b59"/></marker>
+    <linearGradient id="heat" x1="0" x2="1"><stop offset="0" stop-color="#7fbf7b"/><stop offset=".45" stop-color="#f0d467"/><stop offset="1" stop-color="#d95b4f"/></linearGradient>
+  </defs>
+
+  <rect class="page" width="2200" height="980"/>
+
+  <!-- Header strips -->
+  <rect x="42" y="34" width="326" height="52" fill="#ffe3e4"/>
+  <text class="h1" x="66" y="70">Noisy Pair Encoding</text>
+  <rect x="395" y="34" width="780" height="52" fill="#ffe3e4"/>
+  <text class="h1" x="425" y="70">Robust Association Purification (RAP)</text>
+  <rect x="1205" y="34" width="900" height="52" fill="#ffe3e4"/>
+  <text class="h1" x="1235" y="70">Semantic Rectification and Reliability Learning (SRL)</text>
+
+  <!-- Left encoder panel -->
+  <rect class="outer" x="42" y="105" width="326" height="805"/>
+  <text class="h2" x="76" y="146">(a) Input with False Association</text>
+
+  <!-- image grid -->
+  <rect x="83" y="175" width="220" height="146" fill="#eaf4fb" stroke="#111" stroke-width="2"/>
+  <g stroke="#fff" stroke-width="2">
+    <rect x="83" y="175" width="73" height="49" fill="#98c8ed"/>
+    <rect x="156" y="175" width="74" height="49" fill="#c6e8a4"/>
+    <rect x="230" y="175" width="73" height="49" fill="#d6c57d"/>
+    <rect x="83" y="224" width="73" height="49" fill="#5fad68"/>
+    <rect x="156" y="224" width="74" height="49" fill="#b98461"/>
+    <rect x="230" y="224" width="73" height="49" fill="#84bd76"/>
+    <rect x="83" y="273" width="73" height="48" fill="#e4d26f"/>
+    <rect x="156" y="273" width="74" height="48" fill="#d48b50"/>
+    <rect x="230" y="273" width="73" height="48" fill="#6e9f65"/>
+  </g>
+  <path d="M142 286C168 228 225 230 251 286" fill="#9a5a37" opacity=".9"/>
+  <circle cx="199" cy="247" r="25" fill="#b76b42"/>
+  <circle cx="189" cy="242" r="4" fill="#111"/>
+  <circle cx="210" cy="242" r="4" fill="#111"/>
+  <text class="lab" x="124" y="351">image x_i</text>
+
+  <rect class="box" x="83" y="395" width="220" height="112"/>
+  <text class="txt" x="104" y="428">A dog is wearing</text>
+  <text class="txt" x="104" y="457">a hat and sitting</text>
+  <text class="txt" x="104" y="486">on the grass.</text>
+  <text class="lab" x="105" y="538">possibly noisy text y_i</text>
+  <path class="arrowR dashed" d="M225 377C270 358 285 388 272 412"/>
+  <text class="tiny" x="238" y="368" fill="#dc2b2b">false match?</text>
+
+  <rect class="pinkdash" x="78" y="590" width="232" height="250"/>
+  <text class="h3" x="122" y="622">CLIP Tokenization</text>
+  <text class="lab" x="97" y="664">patch tokens</text>
+  <g transform="translate(96 680)">
+    <rect class="tokB" x="0" y="0" width="42" height="38"/>
+    <rect class="tokB" x="49" y="0" width="42" height="38"/>
+    <rect class="tokB" x="98" y="0" width="42" height="38"/>
+    <rect class="tokB" x="147" y="0" width="42" height="38"/>
+  </g>
+  <text class="lab" x="97" y="768">word tokens</text>
+  <g transform="translate(96 784)">
+    <rect class="tokP" x="0" y="0" width="42" height="38"/>
+    <rect class="tokP" x="49" y="0" width="42" height="38"/>
+    <rect class="tokP" x="98" y="0" width="42" height="38"/>
+    <rect class="tokP" x="147" y="0" width="42" height="38"/>
+  </g>
+  <path class="arrow2" d="M193 553L193 589"/>
+
+  <!-- encoder wedges and feature clouds -->
+  <polygon points="405,223 540,160 540,286" fill="#ffe2c4" stroke="#111" stroke-width="3"/>
+  <text class="h3" x="437" y="219">Image</text><text class="h3" x="433" y="248">Encoder</text>
+  <polygon points="405,445 540,382 540,508" fill="#dbeaff" stroke="#111" stroke-width="3"/>
+  <text class="h3" x="440" y="442">Text</text><text class="h3" x="433" y="471">Encoder</text>
+  <path class="arrow" d="M303 248L404 223"/>
+  <path class="arrow" d="M303 451L404 445"/>
+
+  <g transform="translate(585 154)">
+    <ellipse cx="95" cy="86" rx="92" ry="72" fill="#fff" stroke="#111" stroke-width="2.2" stroke-dasharray="9 7"/>
+    <circle class="nO" cx="45" cy="55" r="11"/><circle class="nO" cx="82" cy="35" r="11"/><circle class="nO" cx="126" cy="50" r="11"/>
+    <circle class="nO" cx="54" cy="105" r="11"/><circle class="nO" cx="95" cy="91" r="11"/><circle class="nO" cx="142" cy="111" r="11"/>
+    <path d="M45 55L82 35L126 50M54 105L95 91L142 111M82 35L95 91" stroke="#777" stroke-width="2"/>
+    <text class="math" x="38" y="178">v_i, P_i</text>
+  </g>
+  <g transform="translate(585 376)">
+    <ellipse cx="95" cy="86" rx="92" ry="72" fill="#fff" stroke="#111" stroke-width="2.2" stroke-dasharray="9 7"/>
+    <circle class="nB" cx="45" cy="55" r="11"/><circle class="nB" cx="82" cy="35" r="11"/><circle class="nB" cx="126" cy="50" r="11"/>
+    <circle class="nB" cx="54" cy="105" r="11"/><circle class="nB" cx="95" cy="91" r="11"/><circle class="nB" cx="142" cy="111" r="11"/>
+    <path d="M45 55L82 35L126 50M54 105L95 91L142 111M82 35L95 91" stroke="#777" stroke-width="2"/>
+    <text class="math" x="38" y="178">t_i, W_i</text>
+  </g>
+  <path class="arrow" d="M540 223L584 240"/>
+  <path class="arrow" d="M540 445L584 462"/>
+
+  <!-- RAP top outer -->
+  <rect class="outer" x="780" y="105" width="915" height="405"/>
+  <text class="h2" x="820" y="146">(b) Noise-aware Association Discovery and Elite Memory</text>
+
+  <!-- GMM subpanel -->
+  <rect class="dash" x="820" y="172" width="405" height="286"/>
+  <text class="h3" x="858" y="207">Loss-distribution GMM</text>
+  <text class="math" x="860" y="237">l_i = L_NCE(v_i, t_i)</text>
+  <path d="M855 375C895 273 950 278 986 375" fill="none" stroke="#267bb8" stroke-width="4"/>
+  <path d="M963 375C1014 238 1110 246 1162 375" fill="none" stroke="#d84d4a" stroke-width="4"/>
+  <line x1="850" y1="375" x2="1170" y2="375" stroke="#111" stroke-width="2"/>
+  <line x1="850" y1="375" x2="850" y2="268" stroke="#111" stroke-width="2"/>
+  <line x1="1000" y1="260" x2="1000" y2="394" stroke="#111" stroke-width="2" stroke-dasharray="7 6"/>
+  <text class="tiny" x="1012" y="266">tau_gmm</text>
+  <rect class="blue" x="865" y="405" width="138" height="34"/><text class="lab" x="890" y="428">clean p_i</text>
+  <rect class="red" x="1020" y="405" width="138" height="34"/><text class="lab" x="1047" y="428">noisy</text>
+  <text class="tiny" x="880" y="315" fill="#267bb8">low-loss mode</text>
+  <text class="tiny" x="1050" y="292" fill="#d84d4a">high-loss mode</text>
+
+  <!-- Elite selection -->
+  <rect class="bluedash" x="1260" y="172" width="392" height="120"/>
+  <text class="h3" x="1290" y="207">Dynamic High-confidence Filtering</text>
+  <text class="math" x="1290" y="236">tau_dyn = mean(p_i | label_hat_i=clean)</text>
+  <text class="math" x="1290" y="265">D_elite = {i | p_i &gt; tau_dyn + delta}</text>
+  <g transform="translate(1510 202)">
+    <circle class="nG" cx="0" cy="0" r="7"/><circle class="nG" cx="25" cy="20" r="7"/><circle class="nR" cx="50" cy="-5" r="7"/>
+    <circle class="nG" cx="75" cy="15" r="7"/><circle class="nR" cx="100" cy="-10" r="7"/>
+  </g>
+
+  <!-- Memory queue -->
+  <rect class="green" x="1260" y="330" width="392" height="110"/>
+  <text class="h3" x="1300" y="364">FIFO Cross-Model Memory Q</text>
+  <g transform="translate(1303 382)">
+    <rect class="tokG" x="0" y="0" width="42" height="36"/><rect class="tokG" x="50" y="0" width="42" height="36"/>
+    <rect class="tokG" x="100" y="0" width="42" height="36"/><rect class="tokG" x="150" y="0" width="42" height="36"/>
+    <rect class="tokG" x="200" y="0" width="42" height="36"/><rect class="tokG" x="250" y="0" width="42" height="36"/>
+    <text class="tiny" x="10" y="24">v,y</text><text class="tiny" x="60" y="24">v,y</text><text class="tiny" x="110" y="24">v,y</text>
+    <text class="tiny" x="161" y="24">...</text><text class="tiny" x="210" y="24">v,y</text><text class="tiny" x="260" y="24">v,y</text>
+  </g>
+  <text class="tiny" x="1305" y="430">detached representations, rolling update</text>
+  <path class="arrowG" d="M1456 292L1456 329"/>
+  <path class="arrowB" d="M1225 254L1259 236"/>
+  <path class="arrowR dashed" d="M1225 380C1250 465 1740 483 1810 536"/>
+
+  <!-- SRL outer -->
+  <rect class="outer" x="780" y="540" width="1358" height="370"/>
+  <text class="h2" x="820" y="581">(c) Prototype-guided Semantic Rectification and Reliability-aware Learning</text>
+
+  <!-- prototype retrieval -->
+  <rect class="dash" x="820" y="612" width="330" height="250"/>
+  <text class="h3" x="870" y="648">Prototype Retriever</text>
+  <text class="math" x="850" y="680">top-k = argmax sim(v_i, Q)</text>
+  <g transform="translate(864 705)">
+    <rect class="tokY" x="0" y="0" width="45" height="38"/><rect class="tokY" x="54" y="0" width="45" height="38"/>
+    <rect class="tokY" x="108" y="0" width="45" height="38"/><rect class="tokY" x="162" y="0" width="45" height="38"/>
+    <text class="tiny" x="7" y="25">y1</text><text class="tiny" x="61" y="25">y2</text><text class="tiny" x="115" y="25">...</text><text class="tiny" x="169" y="25">yk</text>
+  </g>
+  <rect class="yellow" x="870" y="778" width="205" height="48"/>
+  <text class="lab" x="900" y="807">select best y*</text>
+
+  <!-- token reliability -->
+  <rect class="pinkdash" x="1190" y="612" width="420" height="250"/>
+  <text class="h3" x="1265" y="648">Token Reliability Calibration</text>
+  <text class="tiny" x="1224" y="674">salient patches</text>
+  <g transform="translate(1222 690)">
+    <rect class="tokB" x="0" y="0" width="32" height="30"/><rect class="tokB" x="38" y="0" width="32" height="30"/>
+    <rect class="tokB" x="76" y="0" width="32" height="30"/><rect class="tokB" x="114" y="0" width="32" height="30"/>
+    <rect class="tokB" x="0" y="36" width="32" height="30"/><rect class="tokB" x="38" y="36" width="32" height="30"/>
+    <rect class="tokB" x="76" y="36" width="32" height="30"/><rect class="tokB" x="114" y="36" width="32" height="30"/>
+  </g>
+  <text class="tiny" x="1224" y="790">prototype word tokens</text>
+  <g transform="translate(1222 804)">
+    <rect class="tokP" x="0" y="0" width="32" height="30"/><rect class="tokP" x="38" y="0" width="32" height="30"/>
+    <rect class="tokP" x="76" y="0" width="32" height="30"/><rect class="tokP" x="114" y="0" width="32" height="30"/>
+  </g>
+  <g transform="translate(1406 684)">
+    <rect x="0" y="0" width="112" height="112" fill="#fff" stroke="#111" stroke-width="2"/>
+    <rect x="0" y="0" width="28" height="28" fill="#f7f7f7"/><rect x="28" y="0" width="28" height="28" fill="#cfcfcf"/><rect x="56" y="0" width="28" height="28" fill="#777"/><rect x="84" y="0" width="28" height="28" fill="#bfbfbf"/>
+    <rect x="0" y="28" width="28" height="28" fill="#d9d9d9"/><rect x="28" y="28" width="28" height="28" fill="#555"/><rect x="56" y="28" width="28" height="28" fill="#e8e8e8"/><rect x="84" y="28" width="28" height="28" fill="#b0b0b0"/>
+    <rect x="0" y="56" width="28" height="28" fill="#efefef"/><rect x="28" y="56" width="28" height="28" fill="#b7b7b7"/><rect x="56" y="56" width="28" height="28" fill="#4f4f4f"/><rect x="84" y="56" width="28" height="28" fill="#dadada"/>
+    <rect x="0" y="84" width="28" height="28" fill="#c7c7c7"/><rect x="28" y="84" width="28" height="28" fill="#eeeeee"/><rect x="56" y="84" width="28" height="28" fill="#a5a5a5"/><rect x="84" y="84" width="28" height="28" fill="#666"/>
+  </g>
+  <text class="tiny" x="1390" y="818">patch-word reliability R</text>
+  <rect class="cyan" x="1393" y="828" width="140" height="32"/>
+  <text class="lab" x="1415" y="850">weighted pool</text>
+  <path class="arrow" d="M1375 724L1405 724"/>
+  <path class="arrow" d="M1375 819L1392 843"/>
+
+  <!-- rectified text -->
+  <rect class="purpledash" x="1648" y="612" width="220" height="250"/>
+  <text class="h3" x="1685" y="648">Rectified Text</text>
+  <rect class="box" x="1678" y="675" width="160" height="92"/>
+  <text class="txt" x="1697" y="706">a dog on</text>
+  <text class="txt" x="1697" y="733">the grass</text>
+  <text class="txt" x="1697" y="760">with hat</text>
+  <text class="math" x="1705" y="815">t_i* = fuse(t*, R)</text>
+
+  <!-- objective -->
+  <rect class="bluedash" x="1900" y="612" width="198" height="250"/>
+  <text class="h3" x="1926" y="648">Robust Loss</text>
+  <g transform="translate(1935 674)">
+    <circle class="nO" cx="20" cy="20" r="10"/><circle class="nO" cx="60" cy="20" r="10"/><circle class="nO" cx="100" cy="20" r="10"/>
+    <circle class="nB" cx="20" cy="82" r="10"/><circle class="nB" cx="60" cy="82" r="10"/><circle class="nB" cx="100" cy="82" r="10"/>
+    <line x1="20" y1="20" x2="20" y2="82" stroke="#2b8a3e" stroke-width="4"/>
+    <line x1="60" y1="20" x2="60" y2="82" stroke="#2b8a3e" stroke-width="4"/>
+    <line x1="100" y1="20" x2="100" y2="82" stroke="#2b8a3e" stroke-width="4"/>
+    <line x1="20" y1="20" x2="60" y2="82" stroke="#d44a45" stroke-width="2" stroke-dasharray="5 5"/>
+  </g>
+  <text class="math" x="1922" y="802">w_i prior_i L_NCE</text>
+  <rect class="green" x="1932" y="822" width="128" height="32"/>
+  <text class="lab" x="1955" y="845">retrieval</text>
+
+  <!-- arrows across SRL -->
+  <path class="arrowR" d="M1150 737L1189 737"/>
+  <path class="arrow" d="M1610 737L1647 737"/>
+  <path class="arrow" d="M1868 737L1899 737"/>
+  <path class="arrowG dashed" d="M1456 440C1430 520 1010 575 990 611"/>
+  <path class="arrowR dashed" d="M1296 560C1180 560 1000 598 985 611"/>
+
+  <!-- top-bottom routing -->
+  <path class="arrowR dashed" d="M1680 382C1800 404 1815 548 1745 611"/>
+  <path class="arrowG dashed" d="M1456 440C1475 530 1510 575 1540 612"/>
+
+  <!-- legend -->
+  <rect class="soft" x="42" y="928" width="2096" height="38"/>
+  <circle class="nO" cx="80" cy="947" r="9"/><text class="tiny" x="96" y="952">visual feature</text>
+  <circle class="nB" cx="210" cy="947" r="9"/><text class="tiny" x="226" y="952">text feature</text>
+  <rect class="tokG" x="346" y="936" width="28" height="22"/><text class="tiny" x="384" y="952">elite memory item</text>
+  <rect class="tokY" x="535" y="936" width="28" height="22"/><text class="tiny" x="573" y="952">retrieved prototype</text>
+  <line x1="760" y1="947" x2="820" y2="947" stroke="#111" stroke-width="3" marker-end="url(#arr)"/><text class="tiny" x="835" y="952">training flow</text>
+  <line x1="990" y1="947" x2="1050" y2="947" stroke="#dc2b2b" stroke-width="3" stroke-dasharray="8 7" marker-end="url(#arrr)"/><text class="tiny" x="1065" y="952">noisy rectification</text>
+  <text class="tiny" x="1360" y="952">RASC: robust association learning with high-confidence memory and semantic calibration</text>
+</svg>
