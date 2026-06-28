@@ -87,8 +87,8 @@ def collate(batch):
             
     return batch_tensor_dict
 
-def build_dataloader(args, tranforms=None):
-    logger = logging.getLogger("IRRA.dataset")
+def build_dataloader(args, transforms=None):
+    logger = logging.getLogger("HHNC.dataset")
 
     num_workers = args.num_workers
     dataset = __factory[args.dataset_name](root=args.root_dir)
@@ -106,12 +106,6 @@ def build_dataloader(args, tranforms=None):
 
     if args.training:
         if args.img_aug:
-
-            # train_transforms = preprocess_train
-            # train_transforms.transforms.append(
-            #     T.RandomErasing(scale=(0.02, 0.4), value=norm_mean)
-            # )
-            # logger.info("Added RandomErasing to OpenCLIP train transforms.")
 
             model_cfg = open_clip.get_model_config("ViT-B-32")
             image_cfg = model_cfg.get("vision_cfg", {}) if model_cfg else {}
@@ -174,7 +168,7 @@ def build_dataloader(args, tranforms=None):
                                       collate_fn=collate,
                                       **_loader_kwargs(num_workers, training=True))
         else:
-            logger.error('unsupported sampler! expected softmax or triplet but got {}'.format(args.sampler))
+            logger.error('unsupported sampler: {}'.format(args.sampler))
 
         ds = dataset.val if args.val_dataset == 'val' else dataset.test
         
@@ -200,7 +194,7 @@ def build_dataloader(args, tranforms=None):
 
     else:
         # build dataloader for testing
-        test_transforms = tranforms if tranforms else val_transforms
+        test_transforms = transforms if transforms else val_transforms
 
         ds = dataset.test
         test_img_set = ImageDataset(ds['image_pids'], ds['img_paths'], test_transforms)

@@ -1,282 +1,431 @@
-\section{Methodology}
-This section describes the proposed Fine-Grained Token Rectification (FGTR) framework for cross-modal retrieval with noisy correspondence. Following the common setting in noisy correspondence learning, the observed training set contains image--text pairs whose diagonal correspondence labels may be corrupted. FGTR first divides the training data into clean and noisy subsets according to the memorization effect of deep neural networks. Clean pairs are used for vanilla cross-modal contrastive learning and to maintain a clean prototype memory. For noisy pairs, FGTR rectifies the unreliable textual supervision by retrieving a clean prototype caption and further calibrating its token-level contribution with respect to the query image.
+\section{方法：质量感知双曲层级语义发现的噪声图文关联校准}
+\label{sec:method}
 
-The overall pipeline contains four tightly coupled steps. First, a loss-based data division module estimates the posterior clean probability of each observed pair. Second, high-confidence clean pairs are stored in a dynamic prototype memory, which provides reliable textual candidates for later correction. Third, each noisy image retrieves a globally plausible prototype caption from the memory. Finally, the retrieved prototype is not used as a rigid sentence-level label; instead, FGTR performs fine-grained token rectification to emphasize visually grounded tokens and suppress locally unsupported semantics.
+本节介绍本文提出的质量感知双曲层级语义发现方法，用于噪声图文关联场景下的鲁棒跨模态对齐。与将噪声图文对简单视为全错样本不同，本文认为真实噪声往往具有明显的语义粒度差异：图像与文本可能在粗粒度语义上仍然一致，但在细粒度属性、局部区域或修饰词上发生错配。例如，文本描述为“红发女孩”，而图像中实际为“黑发女孩”，二者在“女孩”层面仍然一致，但在“发色”这一细粒度属性上不一致。若直接将该图文对作为正样本进行对比学习，模型会被错误的细粒度关联误导；若直接丢弃该样本，又会浪费其中仍然可靠的粗粒度监督。
 
-\subsection{Problem Formulation}
-Let $\mathcal{D}=\{(I_i,T_i)\}_{i=1}^{N}$ denote an image--text training set with $N$ observed pairs. In standard cross-modal matching, the diagonal pair $(I_i,T_i)$ is regarded as a positive pair, while $(I_i,T_j)$ with $i\neq j$ is treated as a negative pair. This assumption can be represented by an observed correspondence matrix $\widetilde{\mathbf{Y}}\in\{0,1\}^{N\times N}$, where $\widetilde{Y}_{ii}=1$ and $\widetilde{Y}_{ij}=0$ for $i\neq j$. However, under noisy correspondence, some diagonal pairs are wrongly matched, meaning that $\widetilde{Y}_{ii}=1$ may be inconsistent with the unknown true correspondence.
+为此，本文将噪声图文关联校准建模为一个层级共识发现问题。具体而言，我们首先从高置信可信图文对中构建跨模态融合特征，并基于图像、文本和融合特征共同定义跨模态亲和图。随后，我们在该亲和图上执行质量感知的凝聚式层级聚合，得到一棵原型化跨模态层次结构。该结构并不被假设为人工定义的语义 taxonomy，而是被视为 CLIP 共享空间中由可信样本诱导的数据驱动原型层级。对于疑似噪声图文对，我们分别使用图像特征和文本特征查询同一棵原型树，得到视觉路径和文本路径。两条路径的最深公共祖先表示图像与文本仍然共享的最细可靠语义粒度，并作为校准目标。进一步地，我们将该原型层级映射到双曲空间进行几何正则化，使粗粒度祖先节点和细粒度子节点在表示空间中更符合树形结构。
 
-The goal is to learn robust image and text encoders, denoted by $f_{\theta}(\cdot)$ and $g_{\phi}(\cdot)$, from the corrupted correspondence matrix $\widetilde{\mathbf{Y}}$. Existing noisy correspondence learning methods mainly correct, relabel, or reweight the pair-level correspondence label. In contrast, FGTR aims to rectify noisy supervision at a finer granularity: after obtaining a globally plausible textual prototype for a noisy image, it estimates which tokens in the prototype are visually supported and suppresses unsupported local semantics. This design is especially suitable for partial correspondence noise, where a sentence can be globally related to the image but still contain wrong objects, attributes, or actions.
+\subsection{问题定义}
 
-\subsection{Feature Encoding and Visual Context}
-We employ CLIP~\cite{clip} as the backbone for feature extraction. Given an image $I_i$, the image encoder produces a global visual embedding and patch-level embeddings:
+给定图文训练集
 \begin{equation}
-    \mathbf{V}_i=
-    \{\boldsymbol{v}_{i}^{\mathrm{cls}},\boldsymbol{v}_{i,1},\ldots,\boldsymbol{v}_{i,L}\}
-    \in\mathbb{R}^{(L+1)\times d},
+    \mathcal{D}=\{(I_i,T_i)\}_{i=1}^{N},
 \end{equation}
-where $\boldsymbol{v}_{i}^{\mathrm{cls}}$ is the global image embedding and $\boldsymbol{v}_{i,k}$ is the $k$-th patch embedding. Given a caption $T_i$, the text encoder outputs contextual token embeddings
-\begin{equation}
-    \mathbf{T}_i=
-    \{\boldsymbol{t}_{i,1},\boldsymbol{t}_{i,2},\ldots,\boldsymbol{t}_{i,M}\}
-    \in\mathbb{R}^{M\times d},
-\end{equation}
-where the \texttt{[EOS]} embedding is used as the sentence-level textual embedding $\boldsymbol{t}_{i}^{\mathrm{eos}}$. All embeddings used in similarity computation are $\ell_2$-normalized.
+其中 $I_i$ 表示第 $i$ 个图像，$T_i$ 表示其观测文本描述。标准图文对比学习默认对角图文对 $(I_i,T_i)$ 为正样本，但在噪声图文关联场景下，部分观测正样本可能存在语义错配。令 $y_i\in\{0,1\}$ 表示潜在真实匹配状态，其中 $y_i=1$ 表示图文语义匹配，$y_i=0$ 表示噪声图文对。由于 $y_i$ 在训练阶段不可见，模型需要在带噪监督下学习鲁棒的跨模态对齐表示。
 
-For token-level rectification, we construct a visual context from the image patches. To reduce the effect of redundant background regions, we optionally select salient patches according to a hybrid score. The relevance of the $k$-th patch to the global image embedding is
+本文的核心假设是：噪声图文对并非总是完全错误。许多噪声样本在细粒度语义上不可靠，但在粗粒度语义上仍然可用。因此，本文不直接为噪声样本寻找一个新的完整伪文本，也不简单丢弃噪声样本，而是在跨模态原型层次结构中寻找图像和文本的最深共识祖先节点，并利用该节点提供质量可控的弱语义监督。
+
+\subsection{特征编码与样本可靠性估计}
+
+本文采用 CLIP~\cite{clip} 作为图像编码器和文本编码器。给定图像 $I_i$ 和文本 $T_i$，分别得到归一化特征：
 \begin{equation}
-    a_{i,k}=(\boldsymbol{v}_{i,k})^{\top}\boldsymbol{v}_{i}^{\mathrm{cls}}.
-\end{equation}
-We also compute a distinctiveness score
-\begin{equation}
-    r_{i,k}=-(\boldsymbol{v}_{i,k})^{\top}\bar{\boldsymbol{v}}_{i},
+    \boldsymbol{x}_i = \operatorname{Normalize}(f_{\theta}(I_i)),
     \qquad
-    \bar{\boldsymbol{v}}_{i}=\frac{1}{L}\sum_{k=1}^{L}\boldsymbol{v}_{i,k}.
+    \boldsymbol{y}_i = \operatorname{Normalize}(g_{\phi}(T_i)),
 \end{equation}
-After min--max normalization within the image, the saliency score is
+其中 $\boldsymbol{x}_i,\boldsymbol{y}_i\in\mathbb{R}^{d}$ 分别表示视觉特征和文本特征。对于一个大小为 $B$ 的 mini-batch，图文相似度矩阵为
 \begin{equation}
-    s_{i,k}=\operatorname{Norm}_{k}(a_{i,k})+\operatorname{Norm}_{k}(r_{i,k}).
+    S_{ij}=\boldsymbol{x}_i^{\top}\boldsymbol{y}_j .
 \end{equation}
-The top-$\rho$ ratio of patches are retained as $\widetilde{\mathbf{V}}_i$. The visual context for token calibration is
-\begin{equation}
-    \mathbf{U}_i=[\boldsymbol{v}_{i}^{\mathrm{cls}};\widetilde{\mathbf{V}}_i]
-    =\{\boldsymbol{u}_{i,1},\ldots,\boldsymbol{u}_{i,L'+1}\}.
-\end{equation}
-When patch selection is disabled, $\widetilde{\mathbf{V}}_i$ contains all patch embeddings.
-
-\subsection{Data Division by Loss Modeling}
-Following the memorization effect, deep networks tend to learn clean correspondences earlier than noisy ones. Therefore, clean pairs usually have smaller matching losses than mismatched pairs during training. FGTR exploits this small-loss hypothesis to divide the training set into a clean subset and a noisy subset. The division is refreshed during training, so that the clean/noisy partition can follow the evolving cross-modal representation space instead of being fixed by an early model.
-
-For a mini-batch of size $B$, the similarity between image $I_i$ and caption $T_j$ is
-\begin{equation}
-    S_{ij}=(\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{t}_{j}^{\mathrm{eos}}.
-\end{equation}
-The image-to-text and text-to-image matching probabilities are
-\begin{equation}
-    p_{ij}^{i2t}=
-    \frac{\exp(S_{ij}/\tau)}
-    {\sum_{k=1}^{B}\exp(S_{ik}/\tau)},
-    \qquad
-    p_{ij}^{t2i}=
-    \frac{\exp(S_{ji}/\tau)}
-    {\sum_{k=1}^{B}\exp(S_{ki}/\tau)}.
-\end{equation}
-The per-sample decision loss of the observed positive pair is
+观测正样本的对称对比损失定义为
 \begin{equation}
     \ell_i
     =
     -\frac{1}{2}
-    \left(
-    \log p_{ii}^{i2t}+\log p_{ii}^{t2i}
-    \right).
+    \left[
+    \log\frac{\exp(S_{ii}/\tau)}
+    {\sum_{j=1}^{B}\exp(S_{ij}/\tau)}
+    +
+    \log\frac{\exp(S_{ii}/\tau)}
+    {\sum_{j=1}^{B}\exp(S_{ji}/\tau)}
+    \right],
 \end{equation}
+其中 $\tau$ 为温度参数。
 
-We fit the distribution of $\{\ell_i\}_{i=1}^{N}$ using a two-component Gaussian Mixture Model:
+根据深度模型的记忆效应，训练早期和中期的可信图文对通常具有更小的损失，而错配图文对往往具有更大的损失。因此，我们使用两成分高斯混合模型拟合样本损失分布：
 \begin{equation}
-    p(\ell)=\sum_{k=1}^{2}\varpi_k\mathcal{N}(\ell\mid\mu_k,\sigma_k^2),
+    p(\ell)=\sum_{k=1}^{2}\pi_k\mathcal{N}(\ell\mid\mu_k,\sigma_k^2).
 \end{equation}
-where $\varpi_k$, $\mu_k$, and $\sigma_k$ denote the mixture coefficient, mean, and variance of the $k$-th component. The component with the smaller mean is regarded as the clean component, since clean pairs are expected to have lower losses. The posterior clean probability is
+均值较小的成分被视为可信成分，样本属于可信成分的后验概率为
 \begin{equation}
     q_i=P(k_{\mathrm{clean}}\mid \ell_i).
 \end{equation}
-Given a threshold $\delta$, we obtain the predicted correspondence label
+根据阈值 $\delta$ 得到初步 clean/noisy 划分：
 \begin{equation}
     \hat{y}_i=\mathbb{I}(q_i>\delta).
 \end{equation}
-The clean and noisy subsets are then defined as
-\begin{equation}
-\mathcal{D}_{\mathrm{clean}}=
-\{(I_i,T_i)\mid \hat{y}_i=1\},
-\qquad
-\mathcal{D}_{\mathrm{noisy}}=
-\{(I_i,T_i)\mid \hat{y}_i=0\}.
-\end{equation}
-In practice, we use $\delta_{\mathrm{init}}$ for the initial full-dataset loss estimation and $\delta_{\mathrm{bank}}$ for subsequent divisions based on the maintained per-sample loss bank. Specifically, after each mini-batch update, the latest decision loss of the corresponding training samples is written into the loss bank. At the beginning of the next epoch, GMM fitting is performed on this bank to obtain an epoch-level clean/noisy split. This avoids making the division from a single mini-batch and provides a more stable estimate of sample reliability.
+其中 $\hat{y}_i=1$ 的样本构成可信集合 $\mathcal{D}_c$，$\hat{y}_i=0$ 的样本构成疑似噪声集合 $\mathcal{D}_n$。
 
-\subsection{Global Prototype Rectification}
-For pairs in $\mathcal{D}_{\mathrm{noisy}}$, the observed diagonal correspondence is deemed unreliable. Directly optimizing these pairs as positives may reinforce false image--text associations. FGTR therefore performs global prototype rectification: instead of using the noisy caption $T_i$, it retrieves a clean textual prototype from a memory bank built from high-confidence clean pairs.
-
-\noindent\textbf{Clean Prototype Memory.}
-We maintain a FIFO memory bank $\mathcal{M}$:
+为降低错误样本污染层次结构的风险，本文并不使用全部预测可信样本构建层级，而是维护一个高置信 clean memory。设当前可信样本的平均置信度为
 \begin{equation}
-    \mathcal{M}=
-    \{(\boldsymbol{m}^{v}_{r}, C^{\mathcal{M}}_{r})\}_{r=1}^{|\mathcal{M}|},
+    \eta=\frac{1}{|\mathcal{D}_c|}\sum_{i:\hat{y}_i=1}q_i.
 \end{equation}
-where $\boldsymbol{m}^{v}_{r}$ is a detached image embedding and $C^{\mathcal{M}}_{r}$ is the corresponding caption token sequence. The memory is implemented as a FIFO queue, so stale representations from early epochs are gradually replaced by recent clean samples. All stored image embeddings are detached from the computation graph, and the memory is used only as a retrieval pool rather than an additional trainable module. To reduce the risk of introducing borderline noisy pairs, we further apply a simple confidence filtering strategy. At epoch $e$, the average clean confidence is
-\begin{equation}
-    \eta_e=
-    \frac{1}{|\mathcal{D}_{\mathrm{clean}}|}
-    \sum_{i:\hat{y}_i=1}q_i.
-\end{equation}
-Only clean samples with $q_i>\eta_e+\xi$ are enqueued, where $\xi$ is a margin. This step only improves the purity of the prototype pool and is not treated as the main contribution. When the memory contains too few candidates, prototype rectification is disabled and noisy samples are temporarily excluded from optimization, preventing unstable correction from an immature memory.
+仅当 $q_i>\eta+\xi$ 时，样本才被写入 clean memory，其中 $\xi$ 为置信度裕量。Memory 采用先进先出更新，使旧特征逐渐被当前模型产生的新特征替换。
 
-\noindent\textbf{Prototype Retrieval.}
-For a noisy image $I_i$, we adopt a two-stage retrieval strategy. We first retrieve top-$K$ visual neighbors from $\mathcal{M}$ using image-image similarity:
+\subsection{跨模态融合特征与亲和图}
+
+层级语义发现应当服务于图文对齐任务，因此仅使用文本特征建树会引入模态偏差，仅使用图像特征又会忽略文本先验。本文使用可信图文对的融合特征作为跨模态语义锚点。对于 clean memory 中的第 $i$ 个可信样本，定义融合特征为
 \begin{equation}
-    \mathcal{N}_i=
-    \operatorname{TopK}_{K}
+    \boldsymbol{r}_i
+    =
+    \operatorname{Normalize}
     \left(
-    \{(\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{m}^{v}_{r}\}_{r=1}^{|\mathcal{M}|}
+    \alpha\boldsymbol{y}_i + (1-\alpha)\boldsymbol{x}_i
+    \right),
+\end{equation}
+其中 $\alpha\in[0,1]$ 控制文本和视觉信息的贡献比例。由于 $\boldsymbol{x}_i$ 和 $\boldsymbol{y}_i$ 已位于 CLIP 共享语义空间，$\boldsymbol{r}_i$ 可以被视为可信图文对的联合语义表示。
+
+为避免普通距离聚类过度依赖融合向量的局部几何，本文进一步构建跨模态亲和图。对于 clean memory 中的两个可信样本 $i$ 和 $j$，定义跨模态亲和度为
+\begin{equation}
+    A_{ij}
+    =
+    \beta \boldsymbol{r}_i^{\top}\boldsymbol{r}_j
+    +
+    \frac{1-\beta}{2}
+    \left(
+    \boldsymbol{x}_i^{\top}\boldsymbol{x}_j
+    +
+    \boldsymbol{y}_i^{\top}\boldsymbol{y}_j
+    \right),
+\end{equation}
+其中 $\beta$ 控制融合语义相似度与单模态一致性的权衡。该亲和度要求两个样本不仅在融合空间中接近，而且在视觉和文本空间中也具有一致支持，从而降低由单一模态偏差或偶然近邻带来的错误聚合。
+
+为控制计算复杂度，我们不构建稠密全图，而是对每个样本仅保留亲和度最高的 $K_g$ 个近邻，得到稀疏 kNN 亲和图
+\begin{equation}
+    \mathcal{G}=(\mathcal{V},\mathcal{E}_g,A),
+\end{equation}
+其中 $\mathcal{V}$ 为 clean memory 中的样本或初始微簇，$\mathcal{E}_g$ 为保留的近邻边。该图作为后续层级聚合的基础。
+
+\subsection{质量感知的凝聚式层级语义发现}
+
+需要指出的是，聚类算法得到的层次结构并不必然等价于人工语义本体。递归二均值聚类虽然简单，但其强制二分可能产生算法伪影，且划分方向可能受背景、颜色或拍摄风格影响。为此，本文采用质量感知的凝聚式层级聚合替代递归二均值建树。该过程从局部可靠的微原型出发，自底向上合并跨模态亲和度高且合并质量可靠的节点，从而得到数据驱动的跨模态原型层次结构。
+
+首先，我们将 clean memory 中的样本初始化为若干微簇 $\{\mathcal{M}_m\}_{m=1}^{M_0}$。微簇可以由 kNN 图上的局部连通区域得到，也可以由轻量级小簇初始化得到。对于任一微簇或中间节点 $k$，其样本集合记为 $\mathcal{S}_k$，融合原型为
+\begin{equation}
+    \boldsymbol{c}_k
+    =
+    \operatorname{Normalize}
+    \left(
+    \frac{1}{|\mathcal{S}_k|}
+    \sum_{i\in\mathcal{S}_k}\boldsymbol{r}_i
     \right).
 \end{equation}
-The paired captions of these visual neighbors form the prototype candidate set
+
+对于节点 $a$ 和 $b$，其跨节点亲和度定义为
 \begin{equation}
-    \mathcal{P}_i=\{C^{\mathcal{M}}_{r}\mid r\in\mathcal{N}_i\}.
-\end{equation}
-The first stage constrains the candidates to clean captions attached to visually similar images. We then perform a second-stage reranking by selecting the candidate with the highest image-text compatibility to the query image:
-\begin{equation}
-    C_i^{\star}
+    \bar{A}_{ab}
     =
-    \arg\max_{C\in\mathcal{P}_i}
-    (\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}
-    \boldsymbol{t}^{\mathrm{eos}}(C).
+    \frac{1}{|\mathcal{S}_a||\mathcal{S}_b|}
+    \sum_{i\in\mathcal{S}_a}
+    \sum_{j\in\mathcal{S}_b}
+    A_{ij}.
 \end{equation}
-The selected caption $C_i^{\star}$ serves as a global rectification target for the noisy pair. Importantly, $C_i^{\star}$ is treated as a coarse semantic anchor rather than an absolutely correct caption, because visually similar images can still differ in local objects, attributes, and relations.
+在稀疏实现中，仅对 kNN 图中存在连接的节点对计算候选合并分数。若合并节点 $a$ 与 $b$ 得到父节点 $k=a\cup b$，我们计算该父节点的三类质量指标。
 
-\noindent\textbf{Prototype Confidence.}
-Although $C_i^{\star}$ is retrieved from clean candidates, it may still be imperfect. We therefore assign a soft confidence to the rectified pair. Let $c_{i,k}$ be the compatibility between the query image and the $k$-th prototype candidate. We compute
+第一，节点一致性衡量节点内部样本围绕融合原型的紧凑程度：
 \begin{equation}
-    \alpha_{i,k}=
-    \frac{\exp(c_{i,k}/\tau_c)}
-    {\sum_{j=1}^{K}\exp(c_{i,j}/\tau_c)}.
-\end{equation}
-The normalized entropy of the candidate distribution is
-\begin{equation}
-    H_i=
-    \frac{-\sum_{k=1}^{K}\alpha_{i,k}\log(\alpha_{i,k}+\epsilon)}
-    {\log K}.
-\end{equation}
-A lower entropy indicates that the model selects a prototype more decisively. Combining this uncertainty with the retrieved visual-neighbor similarity $\bar{s}_i$, the confidence weight is
-\begin{equation}
-    \omega_i=
-    \operatorname{clip}
-    \left(
-    w_{\min}+(w_{\max}-w_{\min})(1-H_i)\bar{s}_i,
-    w_{\min},w_{\max}
-    \right).
-\end{equation}
-This weight controls the contribution of the rectified noisy pair in the final contrastive objective. Thus, prototype retrieval provides both a corrected textual source and a sample-level confidence prior. If the memory bank is not sufficiently populated, noisy samples are temporarily assigned zero weight.
-
-\subsection{Fine-Grained Token Rectification}
-Caption-level prototype retrieval provides a coarse correction, but it still follows an instance-level or sentence-level rectification paradigm. The retrieved caption can be globally relevant yet locally inconsistent with the query image. FGTR addresses this residual token-level noise by calibrating the prototype representation according to visual evidence. This module is the key distinction of FGTR: it does not assume that all tokens in the retrieved prototype are equally reliable.
-
-For a noisy sample, the selected prototype $C_i^{\star}$ is encoded as
-\begin{equation}
-    \mathbf{T}(C_i^{\star})=
-    \{\boldsymbol{t}_{i,1}^{\star},\ldots,\boldsymbol{t}_{i,M}^{\star}\}.
-\end{equation}
-Let $\Omega_i$ denote the valid token set after removing special tokens such as \texttt{[SOS]}, \texttt{[EOS]}, \texttt{[PAD]}, and \texttt{[MASK]}.
-
-\noindent\textbf{Token-level Visual Support.}
-For each token $m\in\Omega_i$, we measure its visual grounding strength by matching it to the visual context of the query image:
-\begin{equation}
-    \phi_{i,m}
+    C_k
     =
-    \max_{1\leq k\leq L'+1}
-    \operatorname{sg}(\boldsymbol{t}_{i,m}^{\star})^{\top}
-    \operatorname{sg}(\boldsymbol{u}_{i,k}),
+    \frac{1}{|\mathcal{S}_k|}
+    \sum_{i\in\mathcal{S}_k}
+    \boldsymbol{r}_i^{\top}\boldsymbol{c}_k .
 \end{equation}
-where $\operatorname{sg}(\cdot)$ denotes the stop-gradient operation. The support score is estimated without back-propagating through the reliability computation, so the token weights act as adaptive calibration signals rather than extra optimization targets.
-The support scores are normalized within the valid token set:
+第二，跨模态可靠性衡量节点内部样本的图文对齐质量：
 \begin{equation}
-    \rho_{i,m}=
-    \operatorname{Norm}_{m\in\Omega_i}(\phi_{i,m}),
+    R_k
+    =
+    \frac{1}{|\mathcal{S}_k|}
+    \sum_{i\in\mathcal{S}_k}
+    \boldsymbol{x}_i^{\top}\boldsymbol{y}_i .
+\end{equation}
+第三，子节点分离度衡量被合并的两个子节点是否具有可辨别的细粒度差异：
+\begin{equation}
+    D_k
+    =
+    1-\boldsymbol{c}_a^{\top}\boldsymbol{c}_b .
+\end{equation}
+据此定义节点质量：
+\begin{equation}
+    \tilde{C}_k=\frac{C_k+1}{2},
     \qquad
-    \rho_{i,m}\in[0,1].
+    \tilde{R}_k=\frac{R_k+1}{2},
 \end{equation}
-Tokens with higher $\rho_{i,m}$ are better supported by the query image, while low-support tokens are more likely to describe absent or mismatched semantics.
-
-\noindent\textbf{Reliability-aware Token Aggregation.}
-We directly use the normalized visual support as the token aggregation weight:
+其中 $\tilde{C}_k,\tilde{R}_k\in[0,1]$ 是非负归一化后的节点一致性和跨模态可靠性。最终节点质量定义为
 \begin{equation}
-    g_{i,m}=\rho_{i,m},
-    \qquad m\in\Omega_i,
-\end{equation}
-and invalid special tokens are assigned zero weight. In this way, visually grounded tokens contribute more to the textual representation, while unsupported tokens are softly suppressed by smaller aggregation weights. The calibrated token-level representation is
-\begin{equation}
-    \bar{\boldsymbol{t}}_i
+    Q_k
     =
-    \operatorname{Normalize}
+    \tilde{C}_k^{\lambda_c}
+    \tilde{R}_k^{\lambda_r}
+    \left(D_k+\epsilon\right)^{\lambda_d},
+\end{equation}
+其中 $\lambda_c,\lambda_r,\lambda_d$ 控制不同质量因素的贡献，$\epsilon$ 用于数值稳定。对于初始微簇，$D_k$ 可设为 1。
+
+候选合并分数定义为
+\begin{equation}
+    \Phi(a,b)
+    =
+    \bar{A}_{ab}
+    \cdot
+    Q_{a\cup b}.
+\end{equation}
+每一步选择合并分数最高且满足最低质量约束的节点对：
+\begin{equation}
+    (a^\star,b^\star)
+    =
+    \arg\max_{(a,b)\in\Omega}
+    \Phi(a,b),
+\end{equation}
+其中 $\Omega$ 为候选节点对集合。若合并后节点的一致性、跨模态可靠性或子节点分离度低于阈值，则该合并不会被用于强校准，或仅作为低质量祖先保留在树中。该过程持续进行，直到形成根节点或无可接受合并为止。最终得到的层次结构记为
+\begin{equation}
+    \mathcal{H}=(\mathcal{N},\mathcal{E},\{\boldsymbol{c}_k,Q_k\}_{k\in\mathcal{N}}),
+\end{equation}
+其中 $\mathcal{N}$ 为节点集合，$\mathcal{E}$ 为父子边集合。每个叶节点到根节点的路径被缓存，用于后续 LCA 查询。
+
+与递归二均值相比，该设计有两个优点。第一，层级结构由跨模态亲和图诱导，而不是仅由融合向量的欧式划分决定。第二，每个内部节点都具有显式质量分数，后续校准可以根据节点质量调节监督强度，避免过度相信不可靠的伪层级。
+
+\subsection{双曲层级表示学习}
+
+显式层次结构由质量感知层级聚合获得，双曲空间并不负责凭空发现树结构，而是用于更自然地表示和正则化该树。树形语义通常具有指数增长的分支结构，双曲空间相比欧式空间更适合容纳这种层级关系。本文将视觉特征、文本特征和融合节点原型映射到 Poincare ball：
+\begin{equation}
+    \boldsymbol{z}_i^v
+    =
+    \operatorname{Exp}_{0}(W_v\boldsymbol{x}_i),
+    \qquad
+    \boldsymbol{z}_i^t
+    =
+    \operatorname{Exp}_{0}(W_t\boldsymbol{y}_i),
+    \qquad
+    \boldsymbol{u}_k
+    =
+    \operatorname{Exp}_{0}(W_h\boldsymbol{c}_k),
+\end{equation}
+其中 $\operatorname{Exp}_{0}(\cdot)$ 表示原点处的指数映射，$\boldsymbol{u}_k$ 为节点 $k$ 的双曲原型。对于 Poincare ball 中的两点 $\boldsymbol{a}$ 和 $\boldsymbol{b}$，双曲距离定义为
+\begin{equation}
+    d_{\mathbb{B}}(\boldsymbol{a},\boldsymbol{b})
+    =
+    \operatorname{arcosh}
     \left(
-    \frac{\sum_{m\in\Omega_i}g_{i,m}\boldsymbol{t}_{i,m}^{\star}}
-    {\sum_{m\in\Omega_i}g_{i,m}+\epsilon}
+    1+
+    2\frac{\|\boldsymbol{a}-\boldsymbol{b}\|_2^2}
+    {(1-\|\boldsymbol{a}\|_2^2)(1-\|\boldsymbol{b}\|_2^2)}
     \right).
 \end{equation}
-Finally, we fuse the sentence-level prototype representation with the calibrated token representation:
-\begin{equation}
-    \widehat{\boldsymbol{t}}_i
-    =
-    \operatorname{Normalize}
-    \left(
-    \lambda\boldsymbol{t}^{\mathrm{eos}}(C_i^{\star})
-    +(1-\lambda)\bar{\boldsymbol{t}}_i
-    \right).
-\end{equation}
-The resulting $\widehat{\boldsymbol{t}}_i$ is used as the rectified textual representation of the noisy sample. Unlike caption generation or hard token removal, this feature-level rectification softly reduces unsupported semantics while preserving visually grounded words. It also avoids introducing external language models, keeping the correction process within the original cross-modal embedding space.
 
-\subsection{Training Objective}
-FGTR optimizes clean and rectified noisy samples in a unified contrastive objective. For clean pairs, the original sentence representation is used:
+为使双曲表示保持树结构，我们使用三类层级正则项。首先，父子紧致项鼓励相连节点保持接近：
 \begin{equation}
-    \boldsymbol{z}_i=\boldsymbol{t}_{i}^{\mathrm{eos}},
-    \qquad (I_i,T_i)\in\mathcal{D}_{\mathrm{clean}}.
+    \mathcal{L}_{pc}
+    =
+    \frac{1}{|\mathcal{E}|}
+    \sum_{(p,c)\in\mathcal{E}}
+    Q_c
+    d_{\mathbb{B}}(\boldsymbol{u}_p,\boldsymbol{u}_c).
 \end{equation}
-For noisy pairs with a valid retrieved prototype, the calibrated representation is used:
+其次，深度顺序项鼓励父节点比子节点更靠近原点：
 \begin{equation}
-    \boldsymbol{z}_i=\widehat{\boldsymbol{t}}_i,
-    \qquad (I_i,T_i)\in\mathcal{D}_{\mathrm{noisy}}.
+    \mathcal{L}_{depth}
+    =
+    \frac{1}{|\mathcal{E}|}
+    \sum_{(p,c)\in\mathcal{E}}
+    Q_c
+    \max(0,\|\boldsymbol{u}_p\|_2-\|\boldsymbol{u}_c\|_2+m_d).
 \end{equation}
-The prototype-based sample prior is defined as
+最后，兄弟分离项避免同一父节点下的高质量子节点塌缩：
 \begin{equation}
-    \pi_i=
+    \mathcal{L}_{sib}
+    =
+    \frac{1}{|\mathcal{S}_{sib}|}
+    \sum_{(a,b)\in\mathcal{S}_{sib}}
+    \min(Q_a,Q_b)
+    \max(0,m_s-d_{\mathbb{B}}(\boldsymbol{u}_a,\boldsymbol{u}_b)).
+\end{equation}
+整体层级正则项为
+\begin{equation}
+    \mathcal{L}_{hier}
+    =
+    \mathcal{L}_{pc}
+    +
+    \mathcal{L}_{depth}
+    +
+    \mathcal{L}_{sib}.
+\end{equation}
+通过引入节点质量权重，低质量分支对双曲几何的约束被自动减弱，从而降低错误层级对表示学习的干扰。
+
+\subsection{双路径查询与最深公共祖先校准}
+
+对于疑似噪声样本 $(I_i,T_i)\in\mathcal{D}_n$，不能直接将其图像和文本融合后查询树，因为该图文对本身可能已经错配，融合操作会把错误关联写入查询特征。因此，本文分别使用图像特征和文本特征查询同一棵原型层级树。
+
+在欧式实现中，可以使用单模态特征与叶节点融合原型的余弦相似度进行查询；在双曲实现中，则使用负双曲距离作为查询分数。为统一表示，记模态 $m\in\{v,t\}$ 到叶节点 $l$ 的查询分数为
+\begin{equation}
+    \rho_i^m(l)
+    =
+    -d_{\mathbb{B}}(\boldsymbol{z}_i^m,\boldsymbol{u}_l).
+\end{equation}
+视觉和文本分别查询得到最近叶节点：
+\begin{equation}
+    l_i^v = \arg\max_{l\in\mathcal{L}_{leaf}}\rho_i^v(l),
+    \qquad
+    l_i^t = \arg\max_{l\in\mathcal{L}_{leaf}}\rho_i^t(l).
+\end{equation}
+根据预存的 root-to-leaf 路径表，得到视觉路径和文本路径：
+\begin{equation}
+    P_i^v = \operatorname{Path}(l_i^v),
+    \qquad
+    P_i^t = \operatorname{Path}(l_i^t).
+\end{equation}
+
+如果图像与文本在细粒度上完全一致，两条路径应在较深层保持重合；如果二者只在粗粒度上匹配，则两条路径会在中间节点后分叉。因此，本文选择两条路径的最深公共祖先作为共识校准节点：
+\begin{equation}
+    a_i = \operatorname{LCA}(l_i^v,l_i^t).
+\end{equation}
+该节点表示当前噪声图文对仍然共享的最细语义层级。例如，文本路径为“person $\rightarrow$ girl $\rightarrow$ red-haired girl”，视觉路径为“person $\rightarrow$ girl $\rightarrow$ black-haired girl”，则二者的最深公共祖先为“girl”。此时模型不会被错误的“red-haired”属性牵引，而是保留“girl”这一可靠粗粒度监督。
+
+与仅由文本路径决定校准目标的方法不同，双路径查询使图像和文本具有对等地位。树结构由可信图文对的融合原型和跨模态亲和图共同诱导，图像和文本分别作为两个模态视角查询该共享语义索引，最终使用二者共同支持的祖先节点进行校准。
+
+\subsection{质量感知的祖先校准损失}
+
+共识祖先节点的质量直接影响校准效果。如果树结构不可靠、查询置信度过低，或最深公共祖先过于接近根节点，则强行校准可能产生负迁移。因此，本文将节点质量显式纳入校准权重。
+
+首先，根据视觉和文本查询的叶节点得分定义树查询置信度：
+\begin{equation}
+    s_i^v = \rho_i^v(l_i^v),
+    \qquad
+    s_i^t = \rho_i^t(l_i^t),
+    \qquad
+    s_i^{tree}=\min(s_i^v,s_i^t).
+\end{equation}
+其次，根据共识祖先的深度判断该节点是否提供有效语义。若 $a_i$ 过于靠近根节点，说明图文几乎没有可用共识；若查询置信度较低，说明样本难以被当前树可靠解释。结合节点质量 $Q_{a_i}$，校准权重定义为
+\begin{equation}
+    \omega_i
+    =
+    \pi_i
+    \cdot
+    Q_{a_i}
+    \cdot
+    h(s_i^{tree})
+    \cdot
+    g(\operatorname{depth}(a_i)),
+\end{equation}
+其中 $\pi_i$ 为样本可靠性先验，$h(\cdot)$ 控制查询置信度，$g(\cdot)$ 控制祖先深度。一个简单实现为
+\begin{equation}
+    h(s)=
     \begin{cases}
-    1, & (I_i,T_i)\in\mathcal{D}_{\mathrm{clean}},\\
-    \omega_i, & (I_i,T_i)\in\mathcal{D}_{\mathrm{noisy}}\ \text{with a valid prototype},\\
-    0, & \text{otherwise}.
+    1, & s>\gamma,\\
+    \lambda_{\mathrm{low}}, & s\leq\gamma,
+    \end{cases}
+    \qquad
+    g(d)=
+    \begin{cases}
+    1, & d\geq d_{\min},\\
+    \lambda_{\mathrm{root}}, & d<d_{\min}.
     \end{cases}
 \end{equation}
-In addition to the prototype prior, we maintain an online matching confidence for each training sample. For the current mini-batch, the instantaneous confidence is computed from the diagonal matching probabilities:
-\begin{equation}
-    \widetilde{w}_i
-    =
-    \frac{1}{2}
-    \left(
-    p_{ii}^{i2t}+p_{ii}^{t2i}
-    \right).
-\end{equation}
-To reduce batch-level fluctuation, the historical confidence is updated by exponential moving average:
-\begin{equation}
-    w_i^{(e)}
-    =
-    \mu w_i^{(e-1)}
-    +(1-\mu)\widetilde{w}_i,
-\end{equation}
-where $\mu$ is the momentum coefficient. The final training weight is the product of the online matching confidence and the prototype prior, i.e., $\psi_i=w_i\pi_i$.
+其中 $\lambda_{\mathrm{low}}$ 和 $\lambda_{\mathrm{root}}$ 是小于 1 的弱校准权重。
 
-The weighted bidirectional contrastive loss is
+最终，噪声样本的祖先校准损失定义为
+\begin{equation}
+    \mathcal{L}_{anc}
+    =
+    \frac{1}{\sum_{i\in\mathcal{B}_n}\omega_i+\epsilon}
+    \sum_{i\in\mathcal{B}_n}
+    \omega_i
+    \left[
+    d_{\mathbb{B}}(\boldsymbol{z}_i^v,\boldsymbol{u}_{a_i})
+    +
+    d_{\mathbb{B}}(\boldsymbol{z}_i^t,\boldsymbol{u}_{a_i})
+    \right],
+\end{equation}
+其中 $\mathcal{B}_n$ 表示 mini-batch 中的疑似噪声样本集合。该损失并不是把图像强行拉向原始文本，也不是把文本强行拉向图像，而是将二者共同拉向融合语义树中的共识祖先原型。当共识祖先质量较低时，$\omega_i$ 会自动减小，从而避免不可靠层级带来的强制错误校准。
+
+\subsection{冲突感知的跨模态对齐目标}
+
+噪声样本的原始图文对比目标可能仍然鼓励模型对齐错误细粒度语义，而祖先校准目标则鼓励模型回退到可靠粗粒度语义。为缓解两类目标之间的梯度冲突，本文对噪声样本的原始检索损失进行降权，同时保留祖先校准分支的监督。
+
+设 $\pi_i$ 为样本先验权重。对于可信样本，$\pi_i=1$；对于疑似噪声样本，$\pi_i$ 由 clean/noisy 划分和校准置信度共同决定。检索分支使用降权后的样本权重：
+\begin{equation}
+    \pi_i^{ret}
+    =
+    \begin{cases}
+    1, & \hat{y}_i=1,\\
+    \lambda_{ret}\pi_i, & \hat{y}_i=0,
+    \end{cases}
+\end{equation}
+其中 $0\leq\lambda_{ret}\leq1$。加权检索损失为
+\begin{equation}
+    \mathcal{L}_{ret}
+    =
+    \frac{1}{\sum_{i=1}^{B}\pi_i^{ret}+\epsilon}
+    \sum_{i=1}^{B}
+    \pi_i^{ret}\ell_i.
+\end{equation}
+最终训练目标为
 \begin{equation}
     \mathcal{L}
     =
-    \frac{1}{\sum_{i=1}^{B}\psi_i+\epsilon}
-    \sum_{i=1}^{B}
-    \psi_i\cdot
-    \frac{\mathcal{L}_{i}^{i2t}+\mathcal{L}_{i}^{t2i}}{2},
+    \mathcal{L}_{ret}
+    +
+    \lambda_h\mathcal{L}_{hier}
+    +
+    \lambda_a\mathcal{L}_{anc}.
 \end{equation}
-where
-\begin{equation}
-    \mathcal{L}_{i}^{i2t}
-    =
-    -\log
-    \frac{\exp((\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{z}_i/\tau)}
-    {\sum_{j=1}^{B}\exp((\boldsymbol{v}_{i}^{\mathrm{cls}})^{\top}\boldsymbol{z}_j/\tau)},
-\end{equation}
-\begin{equation}
-    \mathcal{L}_{i}^{t2i}
-    =
-    -\log
-    \frac{\exp(\boldsymbol{z}_i^{\top}\boldsymbol{v}_{i}^{\mathrm{cls}}/\tau)}
-    {\sum_{j=1}^{B}\exp(\boldsymbol{z}_i^{\top}\boldsymbol{v}_{j}^{\mathrm{cls}}/\tau)}.
-\end{equation}
-Thus, clean pairs provide reliable positive supervision, while rectified noisy pairs contribute according to both their prototype confidence and their current cross-modal matching confidence.
+其中 $\mathcal{L}_{ret}$ 保持跨模态检索能力，$\mathcal{L}_{hier}$ 维护双曲层级结构，$\mathcal{L}_{anc}$ 对噪声图文对提供粒度自适应的共识语义校准。
 
-\subsection{Training Procedure}
-Training proceeds in two phases. In the warm-up phase, the model estimates sample reliability from the observed pairs and optimizes mainly with samples predicted as clean. Noisy samples are suppressed to avoid early confirmation bias, while high-confidence clean samples are gradually enqueued to initialize the prototype memory. In the joint rectification phase, the data division is refreshed at the beginning of each epoch according to the updated loss bank. Clean pairs are used for vanilla cross-modal contrastive learning and memory update. Noisy pairs are first corrected by global prototype retrieval; if a valid prototype is available, FGTR performs token-level rectification with respect to the query image and optimizes the rectified pair with the confidence-weighted contrastive loss. This training procedure allows the model to exploit useful noisy samples only when reliable global and local correction signals are available.
+\subsection{计算复杂度}
+
+本文使用的是原型化层次树，而非将全部训练样本作为叶节点的样本级大树。设 clean memory 中用于建树的样本数为 $M_h$，每个节点保留 $K_g$ 条近邻边，特征维度为 $d$。稀疏亲和图构建的主要开销来自近邻检索，可用矩阵乘法或近似近邻实现。凝聚式层级聚合只在稀疏候选边上进行，若使用优先队列维护候选合并，其复杂度近似为
+\begin{equation}
+    O(M_hK_g\log M_h).
+\end{equation}
+由于层级结构每隔 $T_h$ 个 iteration 才刷新一次，且 $M_h$ 通常限制在数千量级，因此该开销可控。
+
+设叶节点数量为 $K$，mini-batch 中噪声样本数量为 $B_n$。视觉和文本查询叶节点可以通过一次矩阵相似度计算完成，复杂度为
+\begin{equation}
+    O(B_nKd).
+\end{equation}
+最深公共祖先查询不需要遍历整棵树。由于每个叶节点到根节点的路径已预先保存，LCA 可以通过比较两条路径的最长公共前缀得到。若树深度为 $D_h$，则每个样本的 LCA 查询复杂度为
+\begin{equation}
+    O(D_h).
+\end{equation}
+因此，校准阶段的额外开销主要来自叶节点查询，而非 LCA 本身。
+
+\subsection{训练流程}
+
+整体训练过程如下。首先对模型进行 warm-up，并基于样本损失估计 clean/noisy 置信度。随后，将高置信 clean 样本写入 clean memory，并根据其图像、文本和融合特征构建跨模态亲和图。基于该亲和图，模型周期性执行质量感知凝聚式层级聚合，得到带节点质量分数的跨模态原型树。对于每个 mini-batch，可信样本主要由标准检索损失训练；疑似噪声样本则分别使用图像和文本特征查询该原型树，得到两条语义路径，并通过最深公共祖先确定共识校准节点。模型最终同时优化检索损失、质量加权双曲层级正则损失和质量感知祖先校准损失。通过这种方式，模型能够在保留粗粒度正确监督的同时，降低细粒度错误关联和不可靠层级结构对跨模态对齐的干扰。
+
+可实现流程总结如下：
+\begin{verbatim}
+Input:
+    noisy image-text dataset D
+    image encoder f_theta, text encoder g_phi
+    clean memory size M_c
+    graph neighbor number K_g
+    hierarchy refresh interval T_h
+
+1. Warm-up:
+    train the retrieval model for several epochs
+    estimate per-sample clean probability q_i by GMM
+
+2. Clean memory update:
+    enqueue only high-confidence clean pairs
+    store image feature x_i and text feature y_i
+    build fused feature r_i
+
+3. Quality-aware hierarchy discovery:
+    build sparse cross-modal affinity graph A_ij
+    initialize reliable micro-prototypes
+    perform quality-aware agglomerative merging
+    store node prototype c_k, node quality Q_k,
+    and root-to-leaf paths
+    optionally map c_k to hyperbolic prototype u_k
+
+4. Noisy sample calibration:
+    query H with image feature to obtain leaf l_i^v
+    query H with text feature to obtain leaf l_i^t
+    find a_i = LCA(l_i^v, l_i^t)
+    compute weight omega_i using Q_{a_i},
+    query confidence, depth, and sample prior
+    calibrate both modalities to ancestor prototype u_{a_i}
+
+5. Optimization:
+    optimize L_ret + lambda_h L_hier + lambda_a L_anc
+    periodically refresh the hierarchy from clean memory
+\end{verbatim}

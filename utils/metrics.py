@@ -60,7 +60,7 @@ class Evaluator():
     def __init__(self, img_loader, txt_loader):
         self.img_loader = img_loader # gallery
         self.txt_loader = txt_loader # query
-        self.logger = logging.getLogger("RASC.eval")
+        self.logger = logging.getLogger("HHNC.eval")
 
     def _extract_all_features(self, model):
         model = model.eval()
@@ -117,7 +117,7 @@ class Evaluator():
             Global_rsum = rs[6] + current_i2t_rsum
 
         table.custom_format["R1"] = lambda f, v: f"{v:.2f}"
-        # ... 其余 format 不变
+        # ... 鍏朵綑 format 涓嶅彉
         self.logger.info('\n' + str(table))
         return Global_rsum
 

@@ -3,56 +3,30 @@ import torch
 from .lr_scheduler import LRSchedulerWithWarmup
 
 
-def build_optimizer(args, model, mode):
+def build_optimizer(args, model, mode="train"):
     params = []
-    print(f'Using {args.lr_factor} times learning rate for random init module ')   
     for key, value in model.named_parameters():
         if not value.requires_grad:
             continue
+
         lr = args.lr
         weight_decay = args.weight_decay
 
-        if "cross" in key:
-            # use large learning rate for random initialized cross modal module
-            lr =  args.lr * args.lr_factor # default 5.0
+        if "hhnc_calibrator" in key:
+            lr = args.lr * args.lr_factor
         if "bias" in key:
             lr = args.lr * args.bias_lr_factor
             weight_decay = args.weight_decay_bias
-        if "classifier" in key or "mlm_head" in key:
-            lr = args.lr * args.lr_factor
-        
-        # if "visul_emb_layer" in key:
-        #     lr =  0.0005
-        # if "texual_emb_layer" in key:
-        #     lr =  0.0005 
-        if "LV" in key:
-            lr =  0.001
-        
-            
-        params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}]
+
+        params.append({"params": [value], "lr": lr, "weight_decay": weight_decay})
 
     if args.optimizer == "SGD":
-        optimizer = torch.optim.SGD(
-            params, lr=args.lr, momentum=args.momentum
-        )
-    elif args.optimizer == "Adam":
-        optimizer = torch.optim.Adam(
-            params,
-            lr=args.lr,
-            betas=(args.alpha, args.beta),
-            eps=1e-3,
-        )
-    elif args.optimizer == "AdamW":
-        optimizer = torch.optim.AdamW(
-            params,
-            lr=args.lr,
-            betas=(args.alpha, args.beta),
-            eps=1e-8,
-        )
-    else:
-        NotImplementedError
-
-    return optimizer
+        return torch.optim.SGD(params, lr=args.lr, momentum=args.momentum)
+    if args.optimizer == "Adam":
+        return torch.optim.Adam(params, lr=args.lr, betas=(args.alpha, args.beta), eps=1e-3)
+    if args.optimizer == "AdamW":
+        return torch.optim.AdamW(params, lr=args.lr, betas=(args.alpha, args.beta), eps=1e-8)
+    raise NotImplementedError(f"Unsupported optimizer: {args.optimizer}")
 
 
 def build_lr_scheduler(args, optimizer):
@@ -68,6 +42,3 @@ def build_lr_scheduler(args, optimizer):
         target_lr=args.target_lr,
         power=args.power,
     )
-
-
-

@@ -31,63 +31,34 @@ def count_module_params(module):
 
 
 def count_active_params(model):
-    """
-    统计当前 ablation_mode 下真正使用的参数量。
-
-    注意：
-    你的代码里即使 baseline 不用 cross_attn / mlm_head，也会实例化这些模块。
-    所以论文更建议报告 active params。
-    """
     model_module = model.module if hasattr(model, "module") else model
 
     active = 0
     details = {}
 
-    # CLIP backbone
     if hasattr(model_module, "base_model"):
         n = count_module_params(model_module.base_model)
         active += n
         details["base_model"] = n
 
-    # logit scale
     if hasattr(model_module, "logit_scale"):
         n = model_module.logit_scale.numel()
         active += n
         details["logit_scale"] = n
 
-    # Full model extra modules
-    use_extra = (
-        getattr(model_module, "use_mlm", False)
-        or getattr(model_module, "enable_token_calibration", False)
-    )
-
-    if use_extra:
-        if hasattr(model_module, "cross_attn"):
-            n = count_module_params(model_module.cross_attn)
-            active += n
-            details["cross_attn"] = n
-
-        if hasattr(model_module, "cross_modal_transformer"):
-            n = count_module_params(model_module.cross_modal_transformer)
-            active += n
-            details["cross_modal_transformer"] = n
-
-        if hasattr(model_module, "mlm_head"):
-            n = count_module_params(model_module.mlm_head)
-            active += n
-            details["mlm_head"] = n
+    if getattr(model_module, "enable_hhnc", False) and hasattr(model_module, "hhnc_calibrator"):
+        n = count_module_params(model_module.hhnc_calibrator)
+        active += n
+        details["hhnc_calibrator"] = n
 
     return {
         "active_params": active,
         "active_param_details": details,
     }
 
-
 def count_memory_bank_size(model):
     """
-    MemoryBank 是 buffer，不属于参数量。
-    但可以统计其显存/内存占用。
-    """
+    MemoryBank 鏄?buffer锛屼笉灞炰簬鍙傛暟閲忋€?    浣嗗彲浠ョ粺璁″叾鏄惧瓨/鍐呭瓨鍗犵敤銆?    """
     model_module = model.module if hasattr(model, "module") else model
 
     if not hasattr(model_module, "memory_bank"):
@@ -156,16 +127,13 @@ def build_dummy_inputs(args, device="cuda", batch_size=1):
 
 def compute_inference_flops(model, args, device="cuda"):
     """
-    统计推理阶段 FLOPs：
-    - image encoder FLOPs
+    缁熻鎺ㄧ悊闃舵 FLOPs锛?    - image encoder FLOPs
     - text encoder FLOPs
 
-    需要安装：
+    闇€瑕佸畨瑁咃細
         pip install fvcore
 
-    注意：
-    fvcore 对部分自定义 op 可能无法统计，结果可作为近似估计。
-    """
+    娉ㄦ剰锛?    fvcore 瀵归儴鍒嗚嚜瀹氫箟 op 鍙兘鏃犳硶缁熻锛岀粨鏋滃彲浣滀负杩戜技浼拌銆?    """
     try:
         from fvcore.nn import FlopCountAnalysis
     except ImportError:
@@ -216,9 +184,7 @@ def benchmark_inference_latency(
     iters=100,
 ):
     """
-    统计推理 latency。
-    分别统计 image encoder 和 text encoder 的 batch latency。
-    """
+    缁熻鎺ㄧ悊 latency銆?    鍒嗗埆缁熻 image encoder 鍜?text encoder 鐨?batch latency銆?    """
     model.eval()
 
     images, caption_ids = build_dummy_inputs(args, device=device, batch_size=batch_size)
@@ -296,7 +262,6 @@ def profile_model_complexity(
 
     report = {}
 
-    report["ablation_mode"] = getattr(args, "ablation_mode", -1)
     report["dataset_name"] = getattr(args, "dataset_name", "unknown")
     report["img_size"] = str(getattr(args, "img_size", "unknown"))
     report["text_length"] = getattr(args, "text_length", 77)
@@ -332,7 +297,6 @@ def profile_model_complexity(
 
     print("=" * 80)
     print("[Complexity Report]")
-    print(f"Ablation mode: {report['ablation_mode']}")
     print(f"Total Params: {report['total_params_M']:.3f} M")
     print(f"Active Params: {report['active_params_M']:.3f} M")
     print(f"Memory Bank: {report['memory_bank_MB']:.3f} MB")

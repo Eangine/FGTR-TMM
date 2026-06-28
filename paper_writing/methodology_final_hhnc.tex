@@ -1,0 +1,406 @@
+\section{方法：质量感知双曲层级共识校准}
+\label{sec:method_final_hhnc}
+
+本文关注噪声图文关联场景下的鲁棒跨模态对齐。与将噪声样本简单视为完全错误样本不同，我们认为真实噪声往往具有粒度差异：图像和文本可能在粗粒度语义上仍然一致，但在局部属性、修饰词或细粒度类别上发生错配。例如，文本为“红发女孩”，图像为“黑发女孩”时，二者在“女孩”层面仍然共享语义，但在“发色”属性上不一致。直接将该样本作为正样本训练会强化错误细粒度关联，直接丢弃又会浪费可用的粗粒度监督。基于此，本文将噪声图文校准建模为跨模态层级共识发现问题：对疑似噪声图文对，分别使用图像和文本查询同一棵由高置信图文对诱导的跨模态原型层级树，并利用两条查询路径的可靠公共祖先作为校准目标。
+
+需要强调的是，本文的层次结构不是人工 taxonomy，也不是假设双曲空间可以凭空发现语义树。显式树结构由高置信样本上的跨模态亲和图和质量感知层级聚合得到；双曲空间用于对该显式层级进行几何表示和正则化，使树形父子关系、祖先抽象性和兄弟分离性在表示空间中更加一致。这样可以避免两个常见问题：仅用文本建树带来的模态偏差，以及仅依赖近邻重匹配带来的检索范围敏感性。
+
+\subsection{样本可靠性估计与高置信记忆库}
+
+给定噪声图文训练集
+\begin{equation}
+    \mathcal{D}=\{(I_i,T_i)\}_{i=1}^{N},
+\end{equation}
+其中 $I_i$ 和 $T_i$ 分别表示图像和观测文本。采用 CLIP 图像编码器 $f_{\theta}$ 和文本编码器 $g_{\phi}$ 得到归一化特征：
+\begin{equation}
+    \boldsymbol{x}_i=\operatorname{Normalize}(f_{\theta}(I_i)),\qquad
+    \boldsymbol{y}_i=\operatorname{Normalize}(g_{\phi}(T_i)).
+\end{equation}
+对每个样本计算标准对称图文检索损失 $\ell_i$。训练早期和中期，干净样本通常具有较小损失，而错配样本具有较大损失。因此，本文使用两成分高斯混合模型拟合样本损失分布：
+\begin{equation}
+    p(\ell)=\sum_{k=1}^{2}\pi_k\mathcal{N}(\ell\mid\mu_k,\sigma_k^2),
+\end{equation}
+并将均值较小的成分视为可信成分。样本属于可信成分的后验概率记为
+\begin{equation}
+    q_i=P(k_{\mathrm{clean}}\mid \ell_i).
+\end{equation}
+根据阈值 $\delta$ 得到初始划分 $\hat{y}_i=\mathbb{I}(q_i>\delta)$。为降低错误样本污染层级结构的风险，本文不使用全部预测可信样本建树，而是维护高置信 clean memory。设当前可信样本平均置信度为
+\begin{equation}
+    \eta=\frac{1}{|\mathcal{D}_c|}\sum_{i:\hat{y}_i=1}q_i,
+\end{equation}
+仅当 $q_i>\eta+\xi$ 时，样本才被写入 memory。memory 采用先进先出更新，使旧特征逐渐被当前编码器产生的新特征替换，从而缓解静态原型与编码器漂移的问题。
+
+\subsection{跨模态亲和图}
+
+层级发现应服务于图文对齐任务。仅使用文本特征会忽略视觉可接受域，仅使用视觉特征会丢失语言先验，因此本文在高置信图文对上构建融合特征：
+\begin{equation}
+    \boldsymbol{r}_i=
+    \operatorname{Normalize}\left(
+    \alpha\boldsymbol{y}_i+(1-\alpha)\boldsymbol{x}_i
+    \right),
+\end{equation}
+其中 $\alpha$ 控制文本和视觉信息的贡献。
+
+对 memory 中样本 $i$ 和 $j$，首先定义原始跨模态相似度：
+\begin{equation}
+    s_{ij}
+    =
+    \beta \boldsymbol{r}_i^{\top}\boldsymbol{r}_j
+    +
+    \frac{1-\beta}{2}
+    \left(
+    \boldsymbol{x}_i^{\top}\boldsymbol{x}_j+
+    \boldsymbol{y}_i^{\top}\boldsymbol{y}_j
+    \right).
+\end{equation}
+由于余弦相似度可能为负，直接作为合并分数会造成阈值语义不稳定。本文将其映射到 $[0,1]$ 并对称化：
+\begin{equation}
+    A_{ij}^{0}=\frac{s_{ij}+1}{2},\qquad
+    A_{ij}=\frac{A_{ij}^{0}+A_{ji}^{0}}{2}.
+\end{equation}
+随后构建 mutual-kNN 稀疏亲和图：
+\begin{equation}
+    \mathcal{G}=(\mathcal{V},\mathcal{E}_g,A),
+\end{equation}
+其中仅保留满足 $j\in\mathrm{kNN}(i)$、$i\in\mathrm{kNN}(j)$ 且 $A_{ij}>\gamma_g$ 的边。mutual-kNN 可以减少偶然单向近邻造成的错误合并。
+
+\subsection{质量感知层级语义发现}
+
+递归二均值虽然简单，但强制二分不一定对应语义层级。本文采用质量感知凝聚式层级聚合，从局部可靠微簇出发，自底向上合并跨模态亲和度高且合并质量可靠的节点。
+
+\textbf{微簇初始化。}
+为保证方法可复现，本文固定使用 mutual-kNN 图上的连通分量作为初始微簇。具体地，在 $\mathcal{G}$ 中保留 $A_{ij}>\gamma_g$ 的边，将其连通分量记为 $\{\mathcal{M}_m\}_{m=1}^{M_0}$。若某个连通分量大小超过 $s_{\max}$，则使用球面 $k$-means 继续划分；若微簇过小或为单点，则保留为低质量叶节点，但不赋予强校准权重。
+
+对任一节点 $k$，其样本集合记为 $\mathcal{S}_k$。本文维护三个模态相关原型：
+\begin{equation}
+    \boldsymbol{c}_k^v=\operatorname{Normalize}
+    \left(\frac{1}{|\mathcal{S}_k|}\sum_{i\in\mathcal{S}_k}\boldsymbol{x}_i\right),
+\end{equation}
+\begin{equation}
+    \boldsymbol{c}_k^t=\operatorname{Normalize}
+    \left(\frac{1}{|\mathcal{S}_k|}\sum_{i\in\mathcal{S}_k}\boldsymbol{y}_i\right),
+    \qquad
+    \boldsymbol{c}_k^r=\operatorname{Normalize}
+    \left(\frac{1}{|\mathcal{S}_k|}\sum_{i\in\mathcal{S}_k}\boldsymbol{r}_i\right).
+\end{equation}
+其中 $\boldsymbol{c}_k^r$ 作为节点的融合原型，$\boldsymbol{c}_k^v$ 和 $\boldsymbol{c}_k^t$ 用于衡量簇级跨模态一致性。
+
+对候选节点 $a$ 和 $b$，跨节点亲和度定义为
+\begin{equation}
+    \bar{A}_{ab}
+    =
+    \frac{1}{|\mathcal{S}_a||\mathcal{S}_b|}
+    \sum_{i\in\mathcal{S}_a}
+    \sum_{j\in\mathcal{S}_b}
+    A_{ij}.
+\end{equation}
+若合并得到父节点 $k=a\cup b$，其质量由三部分组成。
+
+第一，节点内部一致性衡量融合特征围绕融合原型的紧致程度：
+\begin{equation}
+    C_k=
+    \frac{1}{|\mathcal{S}_k|}
+    \sum_{i\in\mathcal{S}_k}
+    \boldsymbol{r}_i^{\top}\boldsymbol{c}_k^r.
+\end{equation}
+第二，簇级跨模态可靠性衡量视觉侧和文本侧是否仍然指向同一语义中心：
+\begin{equation}
+    R_k=
+    \lambda_1(\boldsymbol{c}_k^v)^{\top}\boldsymbol{c}_k^t
+    +
+    \lambda_2
+    \frac{1}{|\mathcal{S}_k|}
+    \sum_{i\in\mathcal{S}_k}
+    \boldsymbol{x}_i^{\top}\boldsymbol{c}_k^t
+    +
+    \lambda_3
+    \frac{1}{|\mathcal{S}_k|}
+    \sum_{i\in\mathcal{S}_k}
+    \boldsymbol{y}_i^{\top}\boldsymbol{c}_k^v,
+\end{equation}
+其中 $\lambda_1+\lambda_2+\lambda_3=1$。相比仅平均原始图文对相似度，该定义直接判断合并后的簇是否仍具有跨模态语义一致性。
+
+第三，子节点分离度不应被设计为越大越好。父节点应聚合相近但可分的子语义，过近表示塌缩，过远则可能并非同一父语义。令
+\begin{equation}
+    D_{ab}=1-(\boldsymbol{c}_a^r)^{\top}\boldsymbol{c}_b^r,
+\end{equation}
+并定义区间型分离质量：
+\begin{equation}
+    \operatorname{Sep}(a,b)
+    =
+    \sigma\left(\frac{D_{ab}-d_{\min}}{\tau_d}\right)
+    \sigma\left(\frac{d_{\max}-D_{ab}}{\tau_d}\right).
+\end{equation}
+当两个子节点过近或过远时，$\operatorname{Sep}(a,b)$ 均较低；只有当二者处于合理分离区间时，该项较高。
+
+将相似度归一化为
+\begin{equation}
+    \tilde{C}_k=\frac{C_k+1}{2},\qquad
+    \tilde{R}_k=\frac{R_k+1}{2},
+\end{equation}
+最终节点质量定义为
+\begin{equation}
+    Q_k=
+    \tilde{C}_k^{\lambda_c}
+    \tilde{R}_k^{\lambda_r}
+    \operatorname{Sep}(a,b)^{\lambda_d}.
+\end{equation}
+初始叶节点或微簇没有子节点分离问题，因此其 $\operatorname{Sep}$ 设为 $1$。
+
+候选合并分数为
+\begin{equation}
+    \Phi(a,b)=\bar{A}_{ab}\cdot Q_{a\cup b}.
+\end{equation}
+每一步选择 $\Phi(a,b)$ 最大且满足最低质量约束的节点对进行合并。若质量约束导致多个连通层级分量无法继续合并，则添加 virtual root 连接所有剩余根节点。virtual root 仅用于保证路径完整性，其质量设为 $Q_{\mathrm{vr}}=0$，不参与强祖先校准。最终得到的层级结构为
+\begin{equation}
+    \mathcal{H}=(\mathcal{N},\mathcal{E},\{\boldsymbol{c}_k^v,\boldsymbol{c}_k^t,\boldsymbol{c}_k^r,Q_k\}_{k\in\mathcal{N}}).
+\end{equation}
+
+\subsection{双曲层级表示学习}
+
+显式层级树由上一节的数据驱动聚合得到，双曲空间用于表示和正则化该树。本文将视觉、文本和节点融合原型映射到 Poincare ball：
+\begin{equation}
+    \boldsymbol{z}_i^v=\operatorname{Exp}_{0}(W_v\boldsymbol{x}_i),\qquad
+    \boldsymbol{z}_i^t=\operatorname{Exp}_{0}(W_t\boldsymbol{y}_i),\qquad
+    \boldsymbol{u}_k=\operatorname{Exp}_{0}(W_h\boldsymbol{c}_k^r).
+\end{equation}
+为避免靠近边界导致数值不稳定，所有双曲表示均进行范数裁剪：
+\begin{equation}
+    \|\boldsymbol{u}_k\|_2,\|\boldsymbol{z}_i^v\|_2,\|\boldsymbol{z}_i^t\|_2 \leq 1-\epsilon_{\mathbb{B}}.
+\end{equation}
+Poincare ball 中的距离为
+\begin{equation}
+    d_{\mathbb{B}}(\boldsymbol{a},\boldsymbol{b})
+    =
+    \operatorname{arcosh}
+    \left(
+    1+
+    2\frac{\|\boldsymbol{a}-\boldsymbol{b}\|_2^2}
+    {(1-\|\boldsymbol{a}\|_2^2)(1-\|\boldsymbol{b}\|_2^2)}
+    \right).
+\end{equation}
+
+原始父子紧致项若直接最小化父子距离，会鼓励父子节点无限靠近，并可能与深度顺序约束冲突。因此本文采用 margin 形式，只约束父子节点不要过远：
+\begin{equation}
+    \mathcal{L}_{pc}
+    =
+    \frac{
+    \sum_{(p,c)\in\mathcal{E}^{-}}
+    Q_c
+    \max(0,d_{\mathbb{B}}(\boldsymbol{u}_p,\boldsymbol{u}_c)-m_{pc})
+    }
+    {
+    \sum_{(p,c)\in\mathcal{E}^{-}}Q_c+\epsilon
+    },
+\end{equation}
+其中 $\mathcal{E}^{-}$ 表示排除 virtual root 相关边后的父子边集合。深度顺序项为
+\begin{equation}
+    \mathcal{L}_{depth}
+    =
+    \frac{
+    \sum_{(p,c)\in\mathcal{E}^{-}}
+    Q_c
+    \max(0,\|\boldsymbol{u}_p\|_2-\|\boldsymbol{u}_c\|_2+m_d)
+    }
+    {
+    \sum_{(p,c)\in\mathcal{E}^{-}}Q_c+\epsilon
+    }.
+\end{equation}
+兄弟分离项为
+\begin{equation}
+    \mathcal{L}_{sib}
+    =
+    \frac{
+    \sum_{(a,b)\in\mathcal{S}_{sib}}
+    \min(Q_a,Q_b)
+    \max(0,m_s-d_{\mathbb{B}}(\boldsymbol{u}_a,\boldsymbol{u}_b))
+    }
+    {
+    \sum_{(a,b)\in\mathcal{S}_{sib}}\min(Q_a,Q_b)+\epsilon
+    }.
+\end{equation}
+整体层级正则为
+\begin{equation}
+    \mathcal{L}_{hier}
+    =
+    \mathcal{L}_{pc}
+    +
+    \mathcal{L}_{depth}
+    +
+    \mathcal{L}_{sib}.
+\end{equation}
+
+\subsection{双路径 top-k LCA 共识校准}
+
+对于疑似噪声样本，不能将其图像和文本再次融合后查询树，因为该融合会把原始错配写入查询特征。因此，本文分别使用视觉特征和文本特征查询同一棵融合原型树。虽然树节点由融合原型构成，但视觉和文本特征均被投影到同一双曲语义空间，查询本质上是单模态表征到跨模态原型索引的匹配。
+
+模态 $m\in\{v,t\}$ 到叶节点 $l$ 的查询分数为
+\begin{equation}
+    \rho_i^m(l)=-d_{\mathbb{B}}(\boldsymbol{z}_i^m,\boldsymbol{u}_l).
+\end{equation}
+为避免负距离阈值随训练尺度漂移，本文将查询分数转化为叶节点概率：
+\begin{equation}
+    p_i^m(l)=
+    \frac{
+    \exp(\rho_i^m(l)/\tau_h)
+    }
+    {
+    \sum_{l'\in\mathcal{L}_{leaf}}
+    \exp(\rho_i^m(l')/\tau_h)
+    }.
+\end{equation}
+查询置信度使用 top-1 与 top-2 概率差：
+\begin{equation}
+    conf_i^m=p_{i,top1}^m-p_{i,top2}^m,\qquad
+    s_i^{tree}=\min(conf_i^v,conf_i^t).
+\end{equation}
+
+直接使用 hard LCA 容易受到 top-1 叶节点跳变影响。本文采用 top-k LCA 分布。令 $\mathcal{K}_i^v$ 和 $\mathcal{K}_i^t$ 分别为视觉和文本概率最高的 $K_l$ 个叶节点，则祖先节点 $a$ 的共识概率为
+\begin{equation}
+    P_i(a)
+    =
+    \sum_{l_v\in\mathcal{K}_i^v}
+    \sum_{l_t\in\mathcal{K}_i^t}
+    p_i^v(l_v)p_i^t(l_t)
+    \mathbb{I}[\operatorname{LCA}(l_v,l_t)=a].
+\end{equation}
+若 $a$ 为 virtual root，则 $P_i(a)$ 不用于强校准。归一化后的非根祖先分布记为 $\bar{P}_i(a)$。该分布表示图像和文本在层级树上共同支持的可靠语义粒度。
+
+\subsection{质量感知祖先校准与冲突缓解}
+
+样本可靠性先验需要区分检索分支和祖先校准分支。对检索分支，可信样本保持完整监督，疑似噪声样本按其 clean 概率降权：
+\begin{equation}
+    \pi_i^{ret}
+    =
+    \begin{cases}
+    1, & \hat{y}_i=1,\\
+    \lambda_{ret}q_i, & \hat{y}_i=0.
+    \end{cases}
+\end{equation}
+对祖先校准分支，仅疑似噪声样本参与，且噪声可能性越高，越需要校准：
+\begin{equation}
+    \pi_i^{anc}
+    =
+    \begin{cases}
+    0, & \hat{y}_i=1,\\
+    \operatorname{stopgrad}(1-q_i), & \hat{y}_i=0.
+    \end{cases}
+\end{equation}
+其中 $\operatorname{stopgrad}(\cdot)$ 表示该权重不反向传播到可靠性估计过程。
+
+对于候选祖先 $a$，校准权重为
+\begin{equation}
+    \omega_i(a)
+    =
+    \pi_i^{anc}
+    \bar{P}_i(a)
+    Q_a
+    h(s_i^{tree})
+    g(\operatorname{depth}(a)),
+\end{equation}
+其中
+\begin{equation}
+    h(s)=\mathbb{I}(s>\gamma_h),
+    \qquad
+    g(d)=
+    \begin{cases}
+    1, & d\geq d_{\min},\\
+    0, & d<d_{\min}.
+    \end{cases}
+\end{equation}
+当查询不确定、祖先过浅、节点质量低或 LCA 为 virtual root 时，校准权重自然为零或接近零，从而避免把样本拉向无语义意义的根节点。
+
+祖先校准损失定义为
+\begin{equation}
+    \mathcal{L}_{anc}
+    =
+    \frac{
+    \sum_{i\in\mathcal{B}_n}
+    \sum_{a\in\mathcal{A}_i}
+    \omega_i(a)
+    \left[
+    d_{\mathbb{B}}(\boldsymbol{z}_i^v,\boldsymbol{u}_a)
+    +
+    d_{\mathbb{B}}(\boldsymbol{z}_i^t,\boldsymbol{u}_a)
+    \right]
+    }
+    {
+    \sum_{i\in\mathcal{B}_n}
+    \sum_{a\in\mathcal{A}_i}
+    \omega_i(a)+\epsilon
+    },
+\end{equation}
+其中 $\mathcal{A}_i$ 为 top-k LCA 产生的非根候选祖先集合。该损失不是把图像强行拉向原始文本，也不是把文本强行拉向图像，而是将二者共同拉向层级树上被双路径支持的共识祖先原型。
+
+加权检索损失为
+\begin{equation}
+    \mathcal{L}_{ret}
+    =
+    \frac{1}{\sum_{i=1}^{B}\pi_i^{ret}+\epsilon}
+    \sum_{i=1}^{B}\pi_i^{ret}\ell_i.
+\end{equation}
+最终训练目标为
+\begin{equation}
+    \mathcal{L}
+    =
+    \mathcal{L}_{ret}
+    +
+    \lambda_h\mathcal{L}_{hier}
+    +
+    \lambda_a\mathcal{L}_{anc}.
+\end{equation}
+该设计明确分离了两类监督：$q_i$ 高的样本更像 clean，主要保留检索监督；$1-q_i$ 高的样本更可能存在错配，仅在树结构、查询置信度和祖先质量均可靠时接受祖先校准。
+
+\subsection{复杂度分析}
+
+本文构建的是原型化层级树，而非样本级大树。设用于建树的 memory 样本数为 $M_h$，特征维度为 $d$，图中每个节点保留 $K_g$ 个近邻。稀疏图构建成本取决于近邻检索实现。若使用精确矩阵相似度，复杂度为 $O(M_h^2d)$；若使用近似近邻，可近似降至亚二次复杂度。给定 kNN 图后，质量感知凝聚式聚合仅在稀疏候选边上进行，使用优先队列维护候选合并时复杂度约为
+\begin{equation}
+    O(M_hK_g\log M_h).
+\end{equation}
+层级结构每隔 $T_h$ 个 iteration 刷新一次，且 $M_h$ 被限制在 memory 大小内，因此该开销可控。
+
+设叶节点数量为 $K$，mini-batch 中疑似噪声样本数量为 $B_n$，top-k LCA 使用 $K_l$ 个候选叶节点。双路径叶节点查询复杂度为 $O(B_nKd)$。由于每个叶节点到根节点的路径已缓存，单次 LCA 可以通过最长公共前缀得到，复杂度为 $O(D_h)$。top-k LCA 的复杂度为 $O(B_nK_l^2D_h)$。实际使用较小的 $K_l$ 时，该部分开销显著小于叶节点检索。
+
+\subsection{训练流程}
+
+整体训练流程如下：
+\begin{verbatim}
+Input:
+    noisy image-text dataset D
+    image encoder f_theta and text encoder g_phi
+    clean memory size M_c
+    graph neighbor number K_g
+    hierarchy refresh interval T_h
+
+1. Warm-up:
+    train the CLIP retrieval model for several epochs
+    estimate clean probability q_i with a two-component GMM
+
+2. Clean memory update:
+    enqueue only high-confidence clean pairs
+    store x_i, y_i, and fused feature r_i
+
+3. Quality-aware hierarchy discovery:
+    build non-negative symmetric mutual-kNN affinity graph
+    initialize micro-clusters from connected components
+    maintain visual, textual, and fused prototypes
+    perform quality-aware agglomerative merging
+    add virtual root if multiple roots remain
+    cache root-to-leaf paths and node qualities
+
+4. Hyperbolic hierarchy regularization:
+    map visual/text features and fused node prototypes to Poincare ball
+    optimize margin parent-child, depth order, and sibling separation losses
+
+5. Noisy sample calibration:
+    query the tree separately with image and text features
+    compute top-k LCA ancestor distribution
+    remove virtual-root and low-confidence ancestors
+    calibrate both modalities to quality-weighted consensus ancestors
+
+6. Optimization:
+    optimize L_ret + lambda_h L_hier + lambda_a L_anc
+    periodically refresh the hierarchy from clean memory
+\end{verbatim}
+
+通过上述设计，本文方法形成了一个自洽闭环：clean memory 降低建树噪声，跨模态亲和图避免单模态偏差，质量感知凝聚聚合避免 k-means 伪层级，区间型分离度避免合并过远节点，virtual root 保证 LCA 完备性，top-k LCA 降低 hard 查询跳变，显式样本权重缓解检索目标与校准目标冲突，双曲几何则作为层级结构的表示增强而非唯一依据。

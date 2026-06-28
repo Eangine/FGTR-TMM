@@ -1,10 +1,28 @@
-\subsection{Implementation Details}
-We implement FGTR with PyTorch and use CLIP ViT-B/32 as the image and text backbone. The input image is resized to $224\times224$, and the maximum text length is set to 77 tokens. Unless otherwise specified, we train the model with the bidirectional InfoNCE objective. For training augmentation, we apply random resized cropping, horizontal flipping, color jittering, Gaussian blurring, and random erasing to images. Text augmentation is enabled during training following the masked-token construction in the data loader.
+\subsection{实现细节}
+\label{sec:implementation}
 
-For noisy correspondence evaluation, we follow the common synthetic noise protocol by randomly replacing a proportion of captions with mismatched captions. In the main Flickr30K setting, the noise ratio is set to 40\%, and the corrupted correspondence indices are loaded from the pre-generated noise file. The model is trained for 10 epochs with the first 5 epochs used as the warm-up stage. During warm-up, noisy samples predicted by the GMM are suppressed to avoid unstable early correction. After warm-up, the clean/noisy division is refreshed at the beginning of each epoch using the maintained per-sample loss bank.
+本文基于 PyTorch 实现所提出的方法，并采用 CLIP ViT-B/32 作为图像和文本编码器。输入图像被调整为 $224\times224$，文本最大长度设置为 77 个 token。除非特别说明，检索分支采用双向 InfoNCE 损失，初始温度为 0.02。模型使用 Adam 优化器训练，学习率为 $1\times10^{-6}$，权重衰减为 $4\times10^{-5}$，动量参数为 $(0.9,0.999)$，batch size 为 64，并使用余弦学习率衰减和自动混合精度训练。
 
-We optimize the model with Adam using a learning rate of $1\times10^{-6}$, weight decay of $4\times10^{-5}$, and momentum parameters $(0.9,0.999)$. The batch size is set to 64, and the learning rate is scheduled by cosine decay. The temperature for contrastive learning is initialized to 0.02. We use PyTorch automatic mixed precision during training.
+在噪声图文关联实验中，我们遵循常用的合成噪声协议，随机替换一定比例的文本描述以构造错配图文对。样本 clean/noisy 状态由两成分 GMM 根据逐样本对比损失估计。初始全数据 GMM 阈值设为 0.95，后续 loss-bank GMM 阈值设为 0.7。前 5 个 epoch 作为 warm-up 阶段，在该阶段中疑似噪声样本被抑制，以降低早期确认偏差。
 
-For FGTR-specific hyperparameters, the prototype memory size is set to 40,000, and prototype retrieval uses the top-5 nearest memory samples. The minimum memory size for enabling noisy-sample correction is 1,024. The GMM posterior threshold is set to 0.5 for both the initial full-dataset estimation and subsequent loss-bank based divisions. For visual context construction, the selected patch ratio is set to 0.4. Prototype confidence is computed from the entropy of the candidate prototype distribution, where the candidate logits are scaled by the learnable CLIP logit scale. We further combine this entropy-based confidence with the average image-image retrieval similarity. The sentence-token fusion coefficient is set to 1.0 in the reported setting.
+clean memory 默认大小为 4096。只有置信度高于当前 clean 样本平均置信度并满足额外裕量的样本会被写入 memory。启用层级校准前，clean memory 至少需要包含 1024 个样本。层级结构默认由 clean memory 中的可信图文特征构建，融合系数设为 $\alpha=0.5$。每隔 100 个 training iteration 使用最多 4096 个 memory 样本刷新一次层级结构。
 
-All experiments are conducted on an NVIDIA RTX 4090 GPU server.
+层级发现采用质量感知凝聚式聚合。首先基于融合特征、图像特征和文本特征共同计算跨模态亲和度，并为每个样本保留 $K_g=20$ 个近邻以构造稀疏亲和图。跨模态亲和度中的融合权重 $\beta$ 默认设为 0.5。初始微簇最大规模设为 16 或 32。凝聚式合并时同时考虑跨节点亲和度、节点一致性、跨模态可靠性和子节点分离度，并将得到的节点质量 $Q_k$ 存入树结构。低质量节点仍可作为层级路径的一部分，但不会触发强校准。
+
+对于疑似噪声样本，图像特征和文本特征分别查询同一棵质量感知原型树，得到视觉叶节点和文本叶节点。每个叶节点到根节点的路径在建树后预先缓存，最深公共祖先可以通过比较两条路径的最长公共前缀得到。最终校准目标为该公共祖先节点的融合原型。校准权重同时由样本先验、祖先节点质量、查询置信度和祖先深度决定。低查询置信度样本、公共祖先过浅样本或祖先质量较低样本不会被强校准，而是使用较小权重进行弱校准。
+
+双曲表示作为层级几何增强模块使用。默认双曲投影维度为 256，曲率为 1.0。层级正则包含父子紧致、深度顺序和兄弟分离三部分，并使用节点质量作为几何正则权重。为减少原始检索目标和祖先校准目标之间的梯度冲突，启用 HHNC 时疑似噪声样本在检索分支中的权重乘以 $\lambda_{ret}=0.5$，祖先校准损失权重设为 0.1。低置信弱校准权重设为 0.1。
+
+主要命令行开关如下：
+\begin{verbatim}
+--enable_hhnc
+--hhnc_hierarchy_source fused
+--hhnc_fusion_alpha 0.5
+--hhnc_loss_weight 0.1
+--hhnc_low_conf_weight 0.1
+--hhnc_noisy_ret_weight 0.5
+--hhnc_hyper_dim 256
+--hhnc_curvature 1.0
+\end{verbatim}
+
+为验证各个设计的贡献，建议进行如下消融实验：文本树与融合树对比，递归二均值树与质量感知凝聚树对比，HDBSCAN 初始化与微簇初始化对比，欧式原型树与双曲原型树对比，扁平原型校准与层级祖先校准对比，单路径校准与双路径 LCA 校准对比，固定树与在线刷新树对比，强制校准与质量感知弱校准对比，以及 retrieval-only correction 与 HHNC-enhanced correction 对比。

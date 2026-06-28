@@ -16,7 +16,7 @@ import torch.nn.functional as F
 from torch import nn
 
 
-logger = logging.getLogger("IRRA.model")
+logger = logging.getLogger("HHNC.model")
 
 _MODELS = {
     "RN50": "https://openaipublic.azureedge.net/clip/models/afeb0e10f9e5a86da6080e35cf09123aca3b358a0c3e3b6c78a7b63bc04b6762/RN50.pt",
@@ -265,7 +265,7 @@ class Transformer(nn.Module):
         self.resblocks = nn.Sequential(*[ResidualAttentionBlock(width, heads, attn_mask) for _ in range(layers)])
 
     def forward(self, x: torch.Tensor):
-        return self.resblocks(x) # 输出 [x, atten_weight]
+        return self.resblocks(x) # 杈撳嚭 [x, atten_weight]
 
 
 class VisionTransformer(nn.Module):
@@ -453,8 +453,7 @@ class CLIP(nn.Module):
     
     
     def load_param(self, state_dict):
-        # 将pretrained_dict里不属于model_dict的键剔除掉
-        param_dict =  {k: v for k, v in state_dict.items() if k in self.state_dict()}
+        # 灏唒retrained_dict閲屼笉灞炰簬model_dict鐨勯敭鍓旈櫎鎺?        param_dict =  {k: v for k, v in state_dict.items() if k in self.state_dict()}
 
         if 'model' in param_dict:
             param_dict = param_dict['model']
